@@ -58,9 +58,34 @@ export const db = {
 
   createUser(user: any) {
     const data = readData();
-    data.users.push(user);
+    const newUser = {
+      ...user,
+      promptCount: user.promptCount ?? 0,
+      tier: user.tier ?? 'free',
+      paymentStatus: user.paymentStatus ?? 'none',
+      paymentPlanRequested: user.paymentPlanRequested ?? null,
+      paymentTxId: user.paymentTxId ?? null,
+      paymentDate: user.paymentDate ?? null,
+    };
+    data.users.push(newUser);
     writeData(data);
-    return user;
+    return newUser;
+  },
+
+  updateUser(user: any) {
+    const data = readData();
+    const idx = data.users.findIndex(u => u.id === user.id);
+    if (idx !== -1) {
+      data.users[idx] = { ...data.users[idx], ...user };
+      writeData(data);
+      return data.users[idx];
+    }
+    return null;
+  },
+
+  getUsers() {
+    const data = readData();
+    return data.users;
   },
 
   // PDFs

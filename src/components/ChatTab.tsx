@@ -2,18 +2,24 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Send, MessageSquare, Plus, Trash2, Calendar, FileText, 
-  Sparkles, Layers, Quote, CheckCircle, Info, ExternalLink, RefreshCw, Paperclip, X 
+  Sparkles, Layers, Quote, CheckCircle, Info, ExternalLink, RefreshCw, Paperclip, X, ArrowRight, ShieldAlert
 } from 'lucide-react';
-import { ChatSession, ChatMessage, PDFDocument } from '../types';
+import { ChatSession, ChatMessage, PDFDocument, User } from '../types';
 
 interface ChatTabProps {
   sessions: ChatSession[];
   pdfs: PDFDocument[];
   authToken: string;
   onRefreshSessions: () => void;
+  user: User;
+  onRefreshUser: () => void;
+  onSwitchToBilling: () => void;
 }
 
-export default function ChatTab({ sessions, pdfs, authToken, onRefreshSessions }: ChatTabProps) {
+export default function ChatTab({ 
+  sessions, pdfs, authToken, onRefreshSessions, 
+  user, onRefreshUser, onSwitchToBilling 
+}: ChatTabProps) {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [inputText, setInputText] = useState('');
   const [questionFile, setQuestionFile] = useState<File | null>(null);
@@ -23,6 +29,11 @@ export default function ChatTab({ sessions, pdfs, authToken, onRefreshSessions }
 
   const messageEndRef = useRef<HTMLDivElement>(null);
   const questionFileInputRef = useRef<HTMLInputElement>(null);
+
+  const isFreeExhausted = (user.tier || 'free') === 'free' && ((user.promptCount || 0) >= 5 || pdfs.length >= 1);
+  const isPaymentPending = (user.tier || 'free') !== 'free' && user.paymentStatus === 'pending';
+  const isPaymentNotApproved = (user.tier || 'free') !== 'free' && user.paymentStatus !== 'approved' && user.paymentStatus !== 'pending';
+  const isLocked = isFreeExhausted || isPaymentPending || isPaymentNotApproved;
 
   // Auto-select session on load
   useEffect(() => {
@@ -321,75 +332,174 @@ export default function ChatTab({ sessions, pdfs, authToken, onRefreshSessions }
               <div ref={messageEndRef} />
             </div>
           )}
-        </div>
-
-        {/* Messaging Box Bottom Form */}
+        </div>        {/* Messaging Box Bottom Form */}
         {activeSessionId && (
           <div className="p-4 border-t border-slate-800 bg-slate-900/10 shrink-0 z-10">
-            <div className="max-w-3xl mx-auto space-y-2">
-              {/* Question file attached indicator */}
-              {questionFile && (
-                <div className="flex items-center gap-2 p-2 px-3 bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 rounded-xl text-xs w-fit animate-fade-in">
-                  <FileText className="h-3.5 w-3.5" />
-                  <span className="font-semibold truncate max-w-[200px]">{questionFile.name}</span>
+            {isLocked ? (
+              <div className="max-w-3xl mx-auto p-5 rounded-2xl bg-slate-950/90 border border-slate-800/80 shadow-[0_0_25px_rgba(244,63,94,0.03)] space-y-4 select-none">
+                {isFreeExhausted ? (
+                  <div className="space-y-4 animate-fade-in text-left">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                      <div>
+                        <h4 className="text-sm font-bold text-red-400 flex items-center gap-1.5 font-sans">
+                          <ShieldAlert className="h-4.5 w-4.5 animate-pulse shrink-0 text-red-500" />
+                          Free Plan Completed / Limit Reached!
+                        </h4>
+                        <p className="text-[11px] text-slate-400 mt-1 max-w-xl leading-relaxed">
+                          Your Free tier has completed. You have either hit the limit of <strong>5 free prompt requests</strong> (Current: {user.promptCount || 0}) or indexed <strong>1 PDF document</strong> (Current: {pdfs.length}). Please upgrade to one of our affordable pricing plans below:
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={onSwitchToBilling}
+                        className="px-3 py-2 bg-gradient-to-r from-indigo-505 to-cyan-505 bg-indigo-500 hover:opacity-95 text-slate-950 font-bold text-[10px] uppercase rounded-lg transition inline-flex items-center gap-1 shrink-0 cursor-pointer shadow-md"
+                      >
+                        Enter Reference ID <ArrowRight className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+
+                    {/* Quick plans grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                      <div className="p-2.5 rounded-xl bg-slate-900/40 border border-slate-850 flex flex-col justify-between">
+                        <div>
+                          <p className="font-bold text-slate-200">Basic Plan</p>
+                          <p className="text-[10px] text-slate-500 mt-0.5">ETB 100 per month</p>
+                        </div>
+                        <a 
+                          href="https://ye-buna.com/kassahunmulatu" 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          referrerPolicy="no-referrer"
+                          className="mt-2.5 block py-1.5 bg-slate-950 hover:bg-slate-900 text-center text-[10px] font-bold text-indigo-400 border border-slate-850 hover:border-slate-800 rounded-lg transition"
+                        >
+                          Go Basic
+                        </a>
+                      </div>
+
+                      <div className="p-2.5 rounded-xl bg-slate-900/40 border border-indigo-500/10 flex flex-col justify-between">
+                        <div>
+                          <p className="font-bold text-slate-200">Pro Year</p>
+                          <p className="text-[10px] text-slate-500 mt-0.5">ETB 500 per year</p>
+                        </div>
+                        <a 
+                          href="https://ye-buna.com/kassahunmulatu" 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          referrerPolicy="no-referrer"
+                          className="mt-2.5 block py-1.5 bg-slate-950 hover:bg-slate-900 text-center text-[10px] font-bold text-cyan-400 border border-slate-850 hover:border-slate-800 rounded-lg transition"
+                        >
+                          Go Pro
+                        </a>
+                      </div>
+
+                      <div className="p-2.5 rounded-xl bg-slate-900/40 border border-slate-850 flex flex-col justify-between">
+                        <div>
+                          <p className="font-bold text-slate-200">Premium Life</p>
+                          <p className="text-[10px] text-slate-500 mt-0.5">ETB 1000 for ever</p>
+                        </div>
+                        <a 
+                          href="https://ye-buna.com/kassahunmulatu" 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          referrerPolicy="no-referrer"
+                          className="mt-2.5 block py-1.5 bg-slate-950 hover:bg-slate-900 text-center text-[10px] font-bold text-purple-400 border border-slate-850 hover:border-slate-800 rounded-lg transition"
+                        >
+                          Go Premium
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3 animate-fade-in py-1 text-left">
+                    <div className="flex items-start gap-3">
+                      <div className="h-8 w-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-500 shrink-0">
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-amber-400">Payment Pending Approval</h4>
+                        <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                          Your request to unlock DocuMind features is pending administrator verification. In compliance with active instructions, AI inquiries are disabled until your payment (TX ID: <code className="font-mono text-slate-200 font-bold select-all">{user.paymentTxId || 'None'}</code>) is approved by an admin.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        type="button"
+                        onClick={onSwitchToBilling}
+                        className="px-3 py-1.5 bg-slate-950 hover:bg-slate-900 border border-slate-850 hover:border-slate-800 text-slate-350 text-[10px] font-bold rounded-lg transition cursor-pointer"
+                      >
+                        Adjust Transaction ID
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="max-w-3xl mx-auto space-y-2">
+                {/* Question file attached indicator */}
+                {questionFile && (
+                  <div className="flex items-center gap-2 p-2 px-3 bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 rounded-xl text-xs w-fit animate-fade-in">
+                    <FileText className="h-3.5 w-3.5" />
+                    <span className="font-semibold truncate max-w-[200px]">{questionFile.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQuestionFile(null);
+                        if (questionFileInputRef.current) questionFileInputRef.current.value = '';
+                      }}
+                      className="p-1 hover:bg-indigo-400/20 text-indigo-400 hover:text-indigo-200 rounded-full transition cursor-pointer"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                )}
+              
+                <form onSubmit={handleSendMessage} className="flex gap-3 relative">
+                  {/* Hidden input */}
+                  <input
+                    ref={questionFileInputRef}
+                    type="file"
+                    accept="application/pdf"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        setQuestionFile(e.target.files[0]);
+                      }
+                    }}
+                    className="hidden"
+                  />
+
                   <button
                     type="button"
-                    onClick={() => {
-                      setQuestionFile(null);
-                      if (questionFileInputRef.current) questionFileInputRef.current.value = '';
-                    }}
-                    className="p-1 hover:bg-indigo-400/20 text-indigo-400 hover:text-indigo-200 rounded-full transition cursor-pointer"
+                    disabled={submitting || pdfs.length === 0}
+                    onClick={() => questionFileInputRef.current?.click()}
+                    className="px-3.5 bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-200 rounded-2xl flex items-center justify-center transition cursor-pointer disabled:opacity-40"
+                    title="Upload questions PDF"
                   >
-                    <X className="h-3 w-3" />
+                    <Paperclip className="h-4.5 w-4.5" />
                   </button>
-                </div>
-              )}
-            
-              <form onSubmit={handleSendMessage} className="flex gap-3 relative">
-                {/* Hidden input */}
-                <input
-                  ref={questionFileInputRef}
-                  type="file"
-                  accept="application/pdf"
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      setQuestionFile(e.target.files[0]);
+
+                  <input
+                    type="text"
+                    disabled={submitting || pdfs.length === 0}
+                    placeholder={
+                      pdfs.length === 0 
+                      ? "Awaiting document uploads to trigger prompting engine..." 
+                      : "Ask a question, or attach a questions file with the clip..."
                     }
-                  }}
-                  className="hidden"
-                />
-
-                <button
-                  type="button"
-                  disabled={submitting || pdfs.length === 0}
-                  onClick={() => questionFileInputRef.current?.click()}
-                  className="px-3.5 bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-200 rounded-2xl flex items-center justify-center transition cursor-pointer disabled:opacity-40"
-                  title="Upload questions PDF"
-                >
-                  <Paperclip className="h-4.5 w-4.5" />
-                </button>
-
-                <input
-                  type="text"
-                  disabled={submitting || pdfs.length === 0}
-                  placeholder={
-                    pdfs.length === 0 
-                    ? "Awaiting document uploads to trigger prompting engine..." 
-                    : "Ask a question, or attach a questions file with the clip..."
-                  }
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  className="w-full pl-5 pr-14 py-3.5 bg-slate-950 border border-slate-800 rounded-2xl text-slate-200 text-sm focus:outline-none focus:border-indigo-500 placeholder-slate-600 transition disabled:opacity-50"
-                />
-                <button
-                  type="submit"
-                  disabled={submitting || (!inputText.trim() && !questionFile) || pdfs.length === 0}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 h-10 w-10 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 text-slate-950 flex items-center justify-center hover:opacity-95 transition cursor-pointer disabled:opacity-40"
-                >
-                  <Send className="h-4.5 w-4.5 stroke-[2.5]" />
-                </button>
-              </form>
-            </div>
+                    value={inputText}
+                    onChange={(e) => setInputText(e.target.value)}
+                    className="w-full pl-5 pr-14 py-3.5 bg-slate-950 border border-slate-800 rounded-2xl text-slate-205 text-sm focus:outline-none focus:border-indigo-505 placeholder-slate-600 transition disabled:opacity-50 text-slate-200"
+                  />
+                  <button
+                    type="submit"
+                    disabled={submitting || (!inputText.trim() && !questionFile) || pdfs.length === 0}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 h-10 w-10 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 text-slate-950 flex items-center justify-center hover:opacity-95 transition cursor-pointer disabled:opacity-40"
+                  >
+                    <Send className="h-4.5 w-4.5 stroke-[2.5]" />
+                  </button>
+                </form>
+              </div>
+            )}
           </div>
         )}
       </div>

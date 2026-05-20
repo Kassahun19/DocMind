@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Mail, Lock, User, FileText, ArrowRight, ShieldCheck, Database, BrainCircuit } from 'lucide-react';
+import { Mail, Lock, User, FileText, ArrowRight, ShieldCheck, Database, BrainCircuit, Sparkles, X, ShieldAlert } from 'lucide-react';
 import { AuthResponse } from '../types';
 
 interface AuthScreenProps {
@@ -14,6 +14,110 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Manual admin modal verification states
+  const [showAdminPrompt, setShowAdminPrompt] = useState(false);
+  const [adminPromptEmail, setAdminPromptEmail] = useState('');
+  const [adminPromptPassword, setAdminPromptPassword] = useState('');
+  const [adminPromptError, setAdminPromptError] = useState('');
+  const [adminPromptLoading, setAdminPromptLoading] = useState(false);
+
+  const handleOpenAdminPrompt = () => {
+    setAdminPromptEmail('');
+    setAdminPromptPassword('');
+    setAdminPromptError('');
+    setShowAdminPrompt(true);
+  };
+
+  const handleVerifyAdminPrompt = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAdminPromptError('');
+    setAdminPromptLoading(true);
+
+    const targetEmail = adminPromptEmail.trim();
+
+    if (targetEmail !== 'kmulatu21@gmail.com' || adminPromptPassword !== 'admin@docmind') {
+      setAdminPromptError('Access Denied: Invalid administrator email or password.');
+      setAdminPromptLoading(false);
+      return;
+    }
+
+    try {
+      const loginRes = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: targetEmail, password: adminPromptPassword }),
+      });
+
+      const loginData = await loginRes.json();
+
+      if (!loginRes.ok) {
+        throw new Error(loginData.error || 'Identity verification failed. Account missing on instance database.');
+      }
+
+      onAuthSuccess(loginData);
+      setShowAdminPrompt(false);
+    } catch (err: any) {
+      console.error('Admin manual login error:', err);
+      setAdminPromptError(err.message || 'Connecting to security server failed.');
+    } finally {
+      setAdminPromptLoading(false);
+    }
+  };
+
+  const handleDemoLogin = async () => {
+    setError('');
+    setLoading(true);
+
+    const demoEmail = 'demo@documind.ai';
+    const demoPassword = 'demopassword123';
+    const demoName = 'Demo Scholar';
+
+    try {
+      // Step A: First try to log in
+      const loginRes = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: demoEmail, password: demoPassword }),
+      });
+
+      const loginData = await loginRes.json();
+
+      // Step B: If credentials don't exist yet on database, register the account and sign in
+      if (!loginRes.ok && (loginRes.status === 401 || loginRes.status === 404)) {
+        const regRes = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ name: demoName, email: demoEmail, password: demoPassword }),
+        });
+
+        const regData = await regRes.json();
+        if (regRes.ok) {
+          onAuthSuccess(regData);
+          return;
+        } else {
+          throw new Error(regData.error || 'Failed to auto-register demo user account');
+        }
+      }
+
+      if (!loginRes.ok) {
+        throw new Error(loginData.error || 'Failed to connect sandbox user session');
+      }
+
+      onAuthSuccess(loginData);
+    } catch (err: any) {
+      console.error('Demo registration connection error:', err);
+      setError(err.message || 'Connecting to demo sandbox configuration failed');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -219,6 +323,32 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
             </button>
           </form>
 
+          {isLogin && (
+            <div className="mt-4 flex flex-col items-center gap-3">
+              <span className="text-[10px] text-slate-600 font-bold uppercase tracking-widest">— OR —</span>
+              
+              <button
+                type="button"
+                disabled={loading}
+                onClick={handleOpenAdminPrompt}
+                className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500/10 to-amber-600/10 hover:from-amber-505 hover:to-amber-605 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 hover:border-amber-550 hover:text-amber-200 text-amber-300 font-bold tracking-wide transition-all text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                <ShieldCheck className="h-4.5 w-4.5 text-amber-400" />
+                Quick Access as System Admin
+              </button>
+
+              <button
+                type="button"
+                disabled={loading}
+                onClick={handleDemoLogin}
+                className="w-full py-3 rounded-xl bg-slate-950/80 hover:bg-slate-900 border border-indigo-500/30 text-indigo-400 font-bold tracking-wide hover:border-indigo-500/60 hover:text-indigo-300 transition-all text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                <Sparkles className="h-4 w-4 text-cyan-400" />
+                Quick Access with Demo Account
+              </button>
+            </div>
+          )}
+
           <div className="mt-8 pt-6 border-t border-slate-800/80 text-center">
             <button
               onClick={() => {
@@ -232,6 +362,108 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
           </div>
         </motion.div>
       </div>
+
+      {/* Manual Admin Credentials Verification Modal */}
+      {showAdminPrompt && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md"
+          onClick={() => setShowAdminPrompt(false)}
+        >
+          <div 
+            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md overflow-hidden relative shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="px-5 py-4 border-b border-slate-850 flex items-center justify-between bg-slate-950/50">
+              <div className="flex items-center gap-1.5 text-amber-400">
+                <ShieldCheck className="h-4.5 w-4.5" />
+                <span className="font-bold text-slate-200 text-sm">
+                  Manual Admin Verification
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAdminPrompt(false)}
+                className="p-1.5 rounded-lg hover:bg-slate-850 text-slate-400 hover:text-slate-200 transition cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Modal Body / Auth Form */}
+            <form onSubmit={handleVerifyAdminPrompt} className="p-6 space-y-4">
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Please enter the administrative email and master credentials manually to log in as system level controller.
+              </p>
+
+              {adminPromptError && (
+                <div className="p-3 rounded-lg border border-red-500/20 bg-red-500/10 text-red-400 text-xs flex items-start gap-2">
+                  <ShieldAlert className="h-4 w-4 shrink-0 mt-0.5" />
+                  <span>{adminPromptError}</span>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Admin Email Address</label>
+                <div className="relative">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500">
+                    <Mail className="h-4 w-4" />
+                  </span>
+                  <input
+                    type="email"
+                    required
+                    placeholder="Enter admin email"
+                    value={adminPromptEmail}
+                    onChange={(e) => setAdminPromptEmail(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 text-xs focus:outline-none focus:border-amber-500 transition"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Admin Password</label>
+                <div className="relative">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500">
+                    <Lock className="h-4 w-4" />
+                  </span>
+                  <input
+                    type="password"
+                    required
+                    placeholder="••••••••"
+                    value={adminPromptPassword}
+                    onChange={(e) => setAdminPromptPassword(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 text-xs focus:outline-none focus:border-amber-500 transition"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setShowAdminPrompt(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-950 text-slate-400 border border-slate-850 hover:bg-slate-900 text-xs font-bold transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={adminPromptLoading}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  {adminPromptLoading ? (
+                    <div className="h-3.5 w-3.5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <span>Authorize Session</span>
+                      <ArrowRight className="h-3.5 w-3.5 stroke-[2.5]" />
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

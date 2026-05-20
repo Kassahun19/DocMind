@@ -4,6 +4,14 @@ export interface User {
   email: string;
   role: 'user' | 'admin';
   createdAt: string;
+  promptCount?: number;
+  tier?: 'free' | 'basic' | 'pro' | 'premium';
+  paymentStatus?: 'none' | 'pending' | 'approved';
+  paymentPlanRequested?: 'basic' | 'pro' | 'premium' | null;
+  paymentTxId?: string | null;
+  paymentDate?: string | null;
+  paymentReceiptName?: string | null;
+  paymentReceiptData?: string | null;
 }
 
 export interface PDFDocument {

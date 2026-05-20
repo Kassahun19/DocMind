@@ -4,16 +4,17 @@ import {
   FileText, Upload, Trash2, Database, MessageSquare, 
   Layers, HardDrive, Info, AlertCircle, Sparkles, CheckCircle2 
 } from 'lucide-react';
-import { PDFDocument, DashboardStats } from '../types';
+import { PDFDocument, DashboardStats, User } from '../types';
 
 interface DashboardTabProps {
   stats: DashboardStats;
   pdfs: PDFDocument[];
   authToken: string;
   onRefresh: () => void;
+  user: User;
 }
 
-export default function DashboardTab({ stats, pdfs, authToken, onRefresh }: DashboardTabProps) {
+export default function DashboardTab({ stats, pdfs, authToken, onRefresh, user }: DashboardTabProps) {
   const [dragActive, setDragActive] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
@@ -168,7 +169,9 @@ export default function DashboardTab({ stats, pdfs, authToken, onRefresh }: Dash
           </div>
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Documents</p>
           <p className="text-2xl font-bold text-slate-100 mt-2">{stats.totalDocs}</p>
-          <div className="mt-2 text-[11px] text-slate-500">Permanently archived</div>
+          <div className="mt-2 text-[11px] text-indigo-400 font-semibold uppercase tracking-wider text-[10px]">
+            {user.tier === 'pro' ? 'Limit: 2 PDFs (Pro)' : user.tier === 'premium' ? 'Limit: 3+ PDFs (Premium)' : 'Limit: 1 PDF'}
+          </div>
         </div>
 
         {/* Vector Chunks */}
@@ -230,7 +233,19 @@ export default function DashboardTab({ stats, pdfs, authToken, onRefresh }: Dash
 
         <h3 className="text-lg font-bold text-slate-100">Drag &amp; Drop PDF Files Here</h3>
         <p className="text-slate-500 text-xs mt-1.5 max-w-sm leading-normal">
-          Or <button onClick={(e) => { e.stopPropagation(); onButtonClick(); }} className="text-indigo-400 hover:underline cursor-pointer font-semibold inline">browse local storage</button> to index multiple documents simultaneously. Max 100MB.
+          {user.tier === 'pro' && (
+            <span className="text-cyan-400 block mb-1 font-semibold">Pro Level: Max 2 PDFs ({stats.totalDocs}/2 uploaded)</span>
+          )}
+          {user.tier === 'premium' && (
+            <span className="text-purple-400 block mb-1 font-semibold">Premium Level: 3+ PDFs ({stats.totalDocs} uploaded)</span>
+          )}
+          {user.tier === 'basic' && (
+            <span className="text-indigo-400 block mb-1 font-semibold">Basic Level: Max 1 PDF ({stats.totalDocs}/1 uploaded)</span>
+          )}
+          {(user.tier === 'free' || !user.tier) && (
+            <span className="text-indigo-400 block mb-1 font-semibold">Free Level: Max 1 PDF ({stats.totalDocs}/1 uploaded)</span>
+          )}
+          Or <button onClick={(e) => { e.stopPropagation(); onButtonClick(); }} className="text-indigo-400 hover:underline cursor-pointer font-semibold inline">browse local storage</button> to index. Max 100MB.
         </p>
 
         {uploading && (
