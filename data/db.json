@@ -1,0 +1,33 @@
+{
+  "users": [
+    {
+      "id": "1779300847625527",
+      "name": "Kassahun",
+      "email": "kassahunmulatu273@gmail.com",
+      "password": "$2b$10$tCSU0iaGXWka/pf.wM7BQePiDQIsJHL7qRJHmErs9i8Ygj8twntDW",
+      "role": "user",
+      "createdAt": "2026-05-20T18:14:07.625Z"
+    },
+    {
+      "id": "1779303289191677",
+      "name": "Test User",
+      "email": "test_1779303288898@example.com",
+      "password": "$2b$10$zNe.GtSjHdZYX0FO7vjQCeag7KvOdtNexn6UvE5iTKDsbPWEXbeou",
+      "role": "user",
+      "createdAt": "2026-05-20T18:54:49.191Z"
+    }
+  ],
+  "pdfs": [
+    {
+      "id": "1779303291074325",
+      "userId": "1779303289191677",
+      "fileName": "sample.pdf",
+      "filePath": "memory",
+      "fileSize": 499,
+      "pageCount": 1,
+      "uploadDate": "2026-05-20T18:54:51.074Z"
+    }
+  ],
+  "chunks": [],
+  "chatSessions": []
+}
