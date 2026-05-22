@@ -2,7 +2,35 @@ import fs from 'fs';
 import path from 'path';
 import { User, PDFDocument, PDFChunk, ChatSession, DashboardStats } from '../types';
 
-const DB_FILE = path.join(process.cwd(), 'data', 'db.json');
+let DB_FILE = path.join(process.cwd(), 'data', 'db.json');
+
+// Ensure database can be written in serverless functions (like Vercel) by leveraging the /tmp directory
+if (process.env.VERCEL) {
+  const tempDbPath = path.join('/tmp', 'db.json');
+  if (!fs.existsSync(tempDbPath)) {
+    try {
+      const dataDir = path.dirname(tempDbPath);
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+      }
+      if (fs.existsSync(DB_FILE)) {
+        fs.copyFileSync(DB_FILE, tempDbPath);
+        console.log('Vercel serverless prep: Cloned db.json template to writable /tmp/db.json');
+      } else {
+        fs.writeFileSync(tempDbPath, JSON.stringify({
+          users: [],
+          pdfs: [],
+          chunks: [],
+          chatSessions: []
+        }, null, 2), 'utf-8');
+        console.log('Vercel serverless prep: Created empty DB table in /tmp/db.json');
+      }
+    } catch (err) {
+      console.error('Vercel serverless prep failure: unable to create writable db in /tmp:', err);
+    }
+  }
+  DB_FILE = tempDbPath;
+}
 
 // Ensure database directory and file exist
 function initializeDb() {
