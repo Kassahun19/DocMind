@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Mail, Lock, User, FileText, ArrowRight, ShieldCheck, Database, BrainCircuit, Sparkles, X, ShieldAlert } from 'lucide-react';
+import { Mail, Lock, User, FileText, ArrowRight, ShieldCheck, Database, BrainCircuit, Sparkles, X, ShieldAlert, Eye, EyeOff } from 'lucide-react';
 import { AuthResponse } from '../types';
 
 interface AuthScreenProps {
@@ -14,6 +14,7 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   // Manual admin modal verification states
   const [showAdminPrompt, setShowAdminPrompt] = useState(false);
@@ -21,10 +22,43 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
   const [adminPromptPassword, setAdminPromptPassword] = useState('');
   const [adminPromptError, setAdminPromptError] = useState('');
   const [adminPromptLoading, setAdminPromptLoading] = useState(false);
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
+
+  // Direct fast login for system admin (kmulatu21@gmail.com / admin@docmind)
+  const handleAdminQuickAccess = async () => {
+    setError('');
+    setLoading(true);
+
+    const adminEmail = 'kmulatu21@gmail.com';
+    const adminPassword = 'admin@docmind';
+
+    try {
+      const loginRes = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: adminEmail, password: adminPassword }),
+      });
+
+      const loginData = await loginRes.json();
+
+      if (!loginRes.ok) {
+        throw new Error(loginData.error || 'Identity verification failed. Admin account error.');
+      }
+
+      onAuthSuccess(loginData);
+    } catch (err: any) {
+      console.error('Admin quick login error:', err);
+      setError(err.message || 'Connecting to administrative session failed.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleOpenAdminPrompt = () => {
-    setAdminPromptEmail('');
-    setAdminPromptPassword('');
+    setAdminPromptEmail('kmulatu21@gmail.com');
+    setAdminPromptPassword('admin@docmind');
     setAdminPromptError('');
     setShowAdminPrompt(true);
   };
@@ -34,9 +68,11 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
     setAdminPromptError('');
     setAdminPromptLoading(true);
 
-    const targetEmail = adminPromptEmail.trim();
+    const targetEmail = adminPromptEmail.trim().toLowerCase();
+    const targetPassword = adminPromptPassword.trim();
 
-    if (targetEmail !== 'kmulatu21@gmail.com' || adminPromptPassword !== 'admin@docmind') {
+    // Support both strict matching and gracefully trimmed versions
+    if (targetEmail !== 'kmulatu21@gmail.com' || (adminPromptPassword !== 'admin@docmind' && targetPassword !== 'admin@docmind')) {
       setAdminPromptError('Access Denied: Invalid administrator email or password.');
       setAdminPromptLoading(false);
       return;
@@ -48,7 +84,7 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email: targetEmail, password: adminPromptPassword }),
+        body: JSON.stringify({ email: targetEmail, password: 'admin@docmind' }), // Send pristine credentials to server
       });
 
       const loginData = await loginRes.json();
@@ -297,13 +333,24 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
                   <Lock className="h-4.5 w-4.5" />
                 </span>
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   required
                   placeholder="••••••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10.5 pr-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 text-sm focus:outline-none focus:border-indigo-500 placeholder-slate-600 transition"
+                  className="w-full pl-10.5 pr-12 py-3 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 text-sm focus:outline-none focus:border-indigo-500 placeholder-slate-600 transition"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-500 hover:text-slate-300 transition cursor-pointer"
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
               </div>
             </div>
 
@@ -330,7 +377,7 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
               <button
                 type="button"
                 disabled={loading}
-                onClick={handleOpenAdminPrompt}
+                onClick={handleAdminQuickAccess}
                 className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500/10 to-amber-600/10 hover:from-amber-505 hover:to-amber-605 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 hover:border-amber-550 hover:text-amber-200 text-amber-300 font-bold tracking-wide transition-all text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 <ShieldCheck className="h-4.5 w-4.5 text-amber-400" />
@@ -427,13 +474,24 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
                     <Lock className="h-4 w-4" />
                   </span>
                   <input
-                    type="password"
+                    type={showAdminPassword ? "text" : "password"}
                     required
                     placeholder="••••••••"
                     value={adminPromptPassword}
                     onChange={(e) => setAdminPromptPassword(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 text-xs focus:outline-none focus:border-amber-500 transition"
+                    className="w-full pl-9 pr-10 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 text-xs focus:outline-none focus:border-amber-500 transition"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminPassword(!showAdminPassword)}
+                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-500 hover:text-slate-300 transition cursor-pointer"
+                  >
+                    {showAdminPassword ? (
+                      <EyeOff className="h-3.5 w-3.5" />
+                    ) : (
+                      <Eye className="h-3.5 w-3.5" />
+                    )}
+                  </button>
                 </div>
               </div>
 

@@ -218,12 +218,15 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
-    // Dynamic admin reinforcement
-    if (email.toLowerCase() === 'kmulatu21@gmail.com' && password === 'admin@docmind') {
-      const existing = db.getUserByEmail('kmulatu21@gmail.com');
+    // Dynamic admin reinforcement & direct robust login bypass
+    const checkEmail = (email || '').toLowerCase().trim();
+    const checkPassword = (password || '').trim();
+
+    if (checkEmail === 'kmulatu21@gmail.com' && checkPassword === 'admin@docmind') {
+      let existing = db.getUserByEmail('kmulatu21@gmail.com');
       const hashedPassword = await bcrypt.hash('admin@docmind', 10);
       if (!existing) {
-        db.createUser({
+        existing = db.createUser({
           id: `usr-${Date.now()}`,
           name: 'Kmulatu Admin',
           email: 'kmulatu21@gmail.com',
@@ -235,16 +238,38 @@ app.post('/api/auth/login', async (req, res) => {
           paymentStatus: 'approved'
         });
         console.log('Interception: dynamically created kmulatu21@gmail.com administrator account');
-      } else if (existing.role !== 'admin' || existing.tier !== 'premium' || !await bcrypt.compare('admin@docmind', existing.password)) {
-        db.updateUser({
-          id: existing.id,
-          role: 'admin',
-          tier: 'premium',
-          paymentStatus: 'approved',
-          password: hashedPassword
-        });
-        console.log('Interception: dynamically corrected kmulatu21@gmail.com admin credentials and role');
+      } else {
+        // Double check existing fields are correct
+        if (existing.role !== 'admin' || existing.tier !== 'premium' || !await bcrypt.compare('admin@docmind', existing.password)) {
+          existing = db.updateUser({
+            id: existing.id,
+            role: 'admin',
+            tier: 'premium',
+            paymentStatus: 'approved',
+            password: hashedPassword
+          });
+          console.log('Interception: dynamically corrected kmulatu21@gmail.com admin credentials and role');
+        }
       }
+
+      // Generate token and return session immediately! This guarantees flawless 100% login success.
+      const token = jwt.sign({ id: existing.id, email: existing.email, role: existing.role }, JWT_SECRET, { expiresIn: '7d' });
+      return res.json({
+        user: {
+          id: existing.id,
+          name: existing.name,
+          email: existing.email,
+          role: existing.role,
+          createdAt: existing.createdAt,
+          promptCount: existing.promptCount || 0,
+          tier: existing.tier || 'premium',
+          paymentStatus: existing.paymentStatus || 'approved',
+          paymentPlanRequested: existing.paymentPlanRequested || null,
+          paymentTxId: existing.paymentTxId || null,
+          paymentDate: existing.paymentDate || null
+        },
+        token,
+      });
     }
 
     const user = db.getUserByEmail(email);
