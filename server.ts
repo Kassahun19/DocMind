@@ -12,7 +12,9 @@ import { db } from './src/server/db.js';
 import { User, PDFDocument, PDFChunk, ChatSession, ChatMessage } from './src/types';
 
 // Redirect logs to server.log so we can debug errors instantly
-const logFile = path.join(process.cwd(), 'server.log');
+const logFile = process.env.VERCEL
+  ? path.join('/tmp', 'server.log')
+  : path.join(process.cwd(), 'server.log');
 const originalLog = console.log;
 const originalError = console.error;
 console.log = (...args) => {
