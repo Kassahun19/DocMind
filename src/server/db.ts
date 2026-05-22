@@ -4,6 +4,14 @@ import { User, PDFDocument, PDFChunk, ChatSession, DashboardStats } from '../typ
 
 let DB_FILE = path.join(process.cwd(), 'data', 'db.json');
 
+// Memory cache of DB for serverless environment resilience & fast operations
+let memoryDbCache: {
+  users: any[];
+  pdfs: PDFDocument[];
+  chunks: PDFChunk[];
+  chatSessions: ChatSession[];
+} | null = null;
+
 // Ensure database can be written in serverless functions (like Vercel) by leveraging the /tmp directory
 if (process.env.VERCEL) {
   const tempDbPath = path.join('/tmp', 'db.json');
@@ -34,18 +42,22 @@ if (process.env.VERCEL) {
 
 // Ensure database directory and file exist
 function initializeDb() {
-  const dir = path.dirname(DB_FILE);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  
-  if (!fs.existsSync(DB_FILE)) {
-    fs.writeFileSync(DB_FILE, JSON.stringify({
-      users: [],
-      pdfs: [],
-      chunks: [],
-      chatSessions: []
-    }, null, 2), 'utf-8');
+  try {
+    const dir = path.dirname(DB_FILE);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    
+    if (!fs.existsSync(DB_FILE)) {
+      fs.writeFileSync(DB_FILE, JSON.stringify({
+        users: [],
+        pdfs: [],
+        chunks: [],
+        chatSessions: []
+      }, null, 2), 'utf-8');
+    }
+  } catch (err) {
+    console.error('Initialize DB error (ignored - using in-memory):', err);
   }
 }
 
@@ -56,19 +68,48 @@ function readData(): {
   chunks: PDFChunk[];
   chatSessions: ChatSession[];
 } {
-  initializeDb();
-  try {
-    const content = fs.readFileSync(DB_FILE, 'utf-8');
-    return JSON.parse(content);
-  } catch (error) {
-    console.error('Error reading database file, resetting:', error);
-    return { users: [], pdfs: [], chunks: [], chatSessions: [] };
+  // If memory cache exists, return it directly
+  if (memoryDbCache) {
+    return memoryDbCache;
   }
+
+  // Attempt to read from file
+  try {
+    initializeDb();
+    if (fs.existsSync(DB_FILE)) {
+      const content = fs.readFileSync(DB_FILE, 'utf-8');
+      memoryDbCache = JSON.parse(content);
+    }
+  } catch (error) {
+    console.error('Error reading database file, using empty schema:', error);
+  }
+
+  // Fallback if reading failed or produced empty cache
+  if (!memoryDbCache) {
+    memoryDbCache = { users: [], pdfs: [], chunks: [], chatSessions: [] };
+  }
+
+  // Ensure default structure
+  memoryDbCache.users = memoryDbCache.users || [];
+  memoryDbCache.pdfs = memoryDbCache.pdfs || [];
+  memoryDbCache.chunks = memoryDbCache.chunks || [];
+  memoryDbCache.chatSessions = memoryDbCache.chatSessions || [];
+
+  return memoryDbCache;
 }
 
 function writeData(data: any): void {
-  initializeDb();
-  fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf-8');
+  // Always update memory cache synchronously
+  memoryDbCache = data;
+
+  // Attempt to write to file safely in background/non-blocking path
+  try {
+    initializeDb();
+    const content = JSON.stringify(data, null, 2);
+    fs.writeFileSync(DB_FILE, content, 'utf-8');
+  } catch (error) {
+    console.error('Non-blocking writing failure (state retained in RAM):', error);
+  }
 }
 
 // User CRUD

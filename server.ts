@@ -116,8 +116,12 @@ app.use(express.json({ limit: '10mb' }));
 const uploadsDir = process.env.VERCEL 
   ? path.join('/tmp', 'uploads')
   : path.join(process.cwd(), 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
+try {
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+} catch (e) {
+  console.error('[CRITICAL] Failed to ensure uploadsDir exists, proceeding safely:', e);
 }
 
 // Multer Storage Configuration (using memoryStorage prevents filesystem bottlenecks and write permission issues on Cloud Run)
