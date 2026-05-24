@@ -30,10 +30,12 @@ export default function ChatTab({
   const messageEndRef = useRef<HTMLDivElement>(null);
   const questionFileInputRef = useRef<HTMLInputElement>(null);
 
+  const isBasicExhausted = (user.tier || 'free') === 'basic' && (user.promptCount || 0) >= 50;
+  const isProExhausted = (user.tier || 'free') === 'pro' && (user.promptCount || 0) >= 50;
   const isFreeExhausted = (user.tier || 'free') === 'free' && ((user.promptCount || 0) >= 5 || pdfs.length >= 1);
   const isPaymentPending = (user.tier || 'free') !== 'free' && user.paymentStatus === 'pending';
   const isPaymentNotApproved = (user.tier || 'free') !== 'free' && user.paymentStatus !== 'approved' && user.paymentStatus !== 'pending';
-  const isLocked = isFreeExhausted || isPaymentPending || isPaymentNotApproved;
+  const isLocked = isFreeExhausted || isBasicExhausted || isProExhausted || isPaymentPending || isPaymentNotApproved;
 
   // Auto-select session on load
   useEffect(() => {
@@ -337,16 +339,24 @@ export default function ChatTab({
           <div className="p-4 border-t border-slate-800 bg-slate-900/10 shrink-0 z-10">
             {isLocked ? (
               <div className="max-w-3xl mx-auto p-5 rounded-2xl bg-slate-950/90 border border-slate-800/80 shadow-[0_0_25px_rgba(244,63,94,0.03)] space-y-4 select-none">
-                {isFreeExhausted ? (
+                {isFreeExhausted || isBasicExhausted || isProExhausted ? (
                   <div className="space-y-4 animate-fade-in text-left">
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                       <div>
                         <h4 className="text-sm font-bold text-red-400 flex items-center gap-1.5 font-sans">
                           <ShieldAlert className="h-4.5 w-4.5 animate-pulse shrink-0 text-red-500" />
-                          Free Plan Completed / Limit Reached!
+                          {isBasicExhausted ? 'Basic Plan Completed / Limit Reached!' : isProExhausted ? 'Pro Plan Completed / Limit Reached!' : 'Free Plan Completed / Limit Reached!'}
                         </h4>
                         <p className="text-[11px] text-slate-400 mt-1 max-w-xl leading-relaxed">
-                          Your Free tier has completed. You have either hit the limit of <strong>5 free prompt requests</strong> (Current: {user.promptCount || 0}) or indexed <strong>1 PDF document</strong> (Current: {pdfs.length}). Please upgrade to one of our affordable pricing plans below:
+                          {isBasicExhausted && (
+                            <>Your Basic plan has completed. You have hit the limit of <strong>50 prompts</strong>. Please upgrade your plan below to continue asking questions.</>
+                          )}
+                          {isProExhausted && (
+                            <>Your Pro monthly allocation has completed. You have hit the limit of <strong>50 prompts/month</strong> (monthly basis). Please upgrade to Premium to unlock unlimited questions.</>
+                          )}
+                          {isFreeExhausted && (
+                            <>Your Free tier has completed. You have either hit the limit of <strong>5 free prompt requests</strong> (Current: {user.promptCount || 0}) or indexed <strong>1 PDF document</strong> (Current: {pdfs.length}). Please upgrade to one of our affordable pricing plans below:</>
+                          )}
                         </p>
                       </div>
                       <button

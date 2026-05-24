@@ -2,13 +2,12 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { createServer as createViteServer } from 'vite';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import multer from 'multer';
 import pdfParse from 'pdf-parse';
 import { GoogleGenAI } from '@google/genai';
-import { db } from './src/server/db.js';
+import { db } from './src/server/db';
 import { User, PDFDocument, PDFChunk, ChatSession, ChatMessage } from './src/types';
 
 // Redirect logs to server.log so we can debug errors instantly
@@ -106,6 +105,30 @@ function splitText(text: string, chunkSize: number = 800, overlap: number = 150)
   }
 
   return chunks.filter(c => c.trim().length > 10);
+}
+
+// Global retry helper to heal transient network glitches and 429 rate limits dynamically
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  retries = 4,
+  delay = 1000,
+  factor = 2
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (error: any) {
+    const isRateLimit = error.status === 429 || 
+                        String(error.message || '').includes('429') || 
+                        String(error.message || '').toLowerCase().includes('quota') ||
+                        error.status === 503 || 
+                        String(error.message || '').includes('503');
+    if (retries > 0 && isRateLimit) {
+      console.warn(`[RETRY BACKOFF] Rate limit or transient error hit. Retrying in ${delay}ms... Details:`, error.message || error);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return retryWithBackoff(fn, retries - 1, delay * factor, factor);
+    }
+    throw error;
+  }
 }
 
 // Express initialization
@@ -348,7 +371,190 @@ app.get('/api/pdf', authenticateToken, (req: any, res) => {
   }
 });
 
-// PDF Upload & Process
+// Robust, unified PDF document parsing and vector chunk embedding mapping pipeline
+async function processPDFBuffer(userId: string, originalname: string, fileBuffer: Buffer): Promise<PDFDocument> {
+  const ai = getGeminiClient();
+  if (!fileBuffer || fileBuffer.length === 0) {
+    throw new Error(`Uploaded file ${originalname} is empty or has binary stream issues.`);
+  }
+
+  const pdfId = Date.now().toString() + Math.round(Math.random() * 1000).toString();
+  const safeStoreName = `${pdfId}-${originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_')}`;
+  const filePath = path.join(uploadsDir, safeStoreName);
+  
+  // Store the PDF permanently on disk
+  fs.writeFileSync(filePath, fileBuffer);
+  
+  // Parse content page-by-page using custom pagerender callback
+  const pageTexts: { pageNum: number; text: string }[] = [];
+  let pdfData: any;
+
+  try {
+    pdfData = await pdfParse(fileBuffer, {
+      pagerender: function(pageData: any) {
+        try {
+          return pageData.getTextContent().then(function(textContent: any) {
+            let lastY: number | undefined, text = '';
+            if (textContent && Array.isArray(textContent.items)) {
+              for (const item of textContent.items) {
+                if (!item) continue;
+                const hasTransform = Array.isArray(item.transform) && item.transform.length >= 6;
+                const itemY = hasTransform ? item.transform[5] : undefined;
+
+                if (lastY === undefined || lastY === itemY) {
+                  text += item.str || '';
+                } else {
+                  text += '\n' + (item.str || '');
+                }
+                if (itemY !== undefined) {
+                  lastY = itemY;
+                }
+              }
+            }
+            const pageNum = pageData.pageNumber || pageData.pageIndex + 1 || 1;
+            pageTexts.push({ pageNum, text });
+            return text;
+          }).catch((e: any) => {
+            console.error('Promise rejection in PDF pagerender callback:', e);
+            return '';
+          });
+        } catch (err) {
+          console.error('Synchronous inner error inside PDF pagerender:', err);
+          return Promise.resolve('');
+        }
+      }
+    });
+  } catch (parseError: any) {
+    console.warn(`Robust PDF custom pagerender failed, falling back to standard pdfParse:`, parseError);
+    try {
+      pdfData = await pdfParse(fileBuffer);
+    } catch (fallbackParseError: any) {
+      throw new Error(`Failed to read PDF file format: ${fallbackParseError.message || fallbackParseError}`);
+    }
+  }
+
+  const pageCount = pdfData.numpages || pageTexts.length || 1;
+
+  // Create PDF record referencing physical filePath on disk
+  const pdfInfo: PDFDocument = {
+    id: pdfId,
+    userId: userId,
+    fileName: originalname,
+    filePath,
+    fileSize: fileBuffer.length,
+    pageCount,
+    uploadDate: new Date().toISOString(),
+  };
+
+  // Extract chunks and index them page by page
+  const generatedChunks: PDFChunk[] = [];
+  let globalChunkIdx = 0;
+
+  const chunksToEmbed: { text: string; pageNum: number }[] = [];
+
+  if (pageTexts.length > 0) {
+    for (const page of pageTexts) {
+      if (!page.text || page.text.trim().length <= 5) continue;
+      const pageChunks = splitText(page.text, 800, 150);
+      for (const text of pageChunks) {
+        chunksToEmbed.push({ text, pageNum: page.pageNum });
+      }
+    }
+  } else {
+    // Fallback for full textual extraction
+    const extractedText = pdfData.text || '';
+    const textChunks = splitText(extractedText);
+    for (const text of textChunks) {
+      chunksToEmbed.push({ text, pageNum: 1 });
+    }
+  }
+
+  // Embed chunks with concurrency pooling and automatic exponential backoff retry to avoid rate limits
+  if (chunksToEmbed.length > 0) {
+    const results: any[] = [];
+    const concurrencyLimit = 3; // safe level for both standard and lower-tier keys
+    
+    for (let i = 0; i < chunksToEmbed.length; i += concurrencyLimit) {
+      const batch = chunksToEmbed.slice(i, i + concurrencyLimit);
+      const batchPromises = batch.map(async (item) => {
+        return await retryWithBackoff(async () => {
+          let values: number[] | null = null;
+          
+          // Try GA general modern embedding model first
+          try {
+            const embedRes = await ai.models.embedContent({
+              model: 'gemini-embedding-2',
+              contents: item.text,
+            });
+            const anyRes = embedRes as any;
+            values = anyRes.embedding?.values || anyRes.embeddings?.[0]?.values;
+          } catch (embedError: any) {
+            console.warn(`[UPLOAD] Primary embedding 'gemini-embedding-2' failed, seeking fallback preview model. Reason:`, embedError?.message || embedError);
+            
+            // Fallback 1: gemini-embedding-2-preview
+            try {
+              const fallbackRes = await ai.models.embedContent({
+                model: 'gemini-embedding-2-preview',
+                contents: item.text,
+              });
+              const anyRes = fallbackRes as any;
+              values = anyRes.embedding?.values || anyRes.embeddings?.[0]?.values;
+            } catch (previewError: any) {
+              console.warn(`[UPLOAD] Fallback 'gemini-embedding-2-preview' failed, seeking legacy fallback. Reason:`, previewError?.message || previewError);
+              
+              // Fallback 2: gemini-embedding-001 (extremely robust legacy base)
+              const legacyRes = await ai.models.embedContent({
+                model: 'gemini-embedding-001',
+                contents: item.text,
+              });
+              const anyRes = legacyRes as any;
+              values = anyRes.embedding?.values || anyRes.embeddings?.[0]?.values;
+            }
+          }
+
+          if (values && values.length > 0) {
+            return {
+              text: item.text,
+              embedding: values,
+              pageNum: item.pageNum
+            };
+          }
+          return null;
+        });
+      });
+
+      const batchResults = await Promise.all(batchPromises);
+      results.push(...batchResults);
+
+      // Small resting period to yield execution and remain under API rate intervals
+      if (i + concurrencyLimit < chunksToEmbed.length) {
+        await new Promise(resolve => setTimeout(resolve, 250));
+      }
+    }
+
+    for (const result of results) {
+      if (result) {
+        generatedChunks.push({
+          id: `${pdfId}-chunk-${globalChunkIdx++}`,
+          pdfId,
+          userId: userId,
+          text: result.text,
+          embedding: result.embedding,
+          pageNum: result.pageNum,
+        });
+      }
+    }
+  }
+
+  // Store in DB
+  db.savePDF(pdfInfo);
+  if (generatedChunks.length > 0) {
+    db.saveChunks(generatedChunks);
+  }
+  return pdfInfo;
+}
+
+// PDF Upload & Process (Standard Direct Endpoint)
 app.post('/api/pdf/upload', authenticateToken, upload.array('files'), async (req: any, res) => {
   try {
     const files = req.files as Express.Multer.File[];
@@ -373,7 +579,7 @@ app.post('/api/pdf/upload', authenticateToken, upload.array('files'), async (req
     }
 
     if (existingCount + files.length > maxAllowed) {
-      return res.status(403).json({
+      return res.status(400).json({
         error: 'PDF vault limit reached',
         tier,
         currentCount: existingCount,
@@ -389,125 +595,11 @@ app.post('/api/pdf/upload', authenticateToken, upload.array('files'), async (req
       return res.status(503).json({ error: 'Gemini API key is missing. Please set GEMINI_API_KEY in the Secrets panel.' });
     }
 
-    const ai = getGeminiClient();
     const processedDocs: PDFDocument[] = [];
 
     // Helper for sequential async PDF parsing & embedding
     for (const file of files) {
-      // Use file.buffer directly from memoryStorage
-      const fileBuffer = file.buffer;
-      if (!fileBuffer || fileBuffer.length === 0) {
-        throw new Error(`Uploaded file ${file.originalname} is empty or has binary stream issues.`);
-      }
-
-      const pdfId = Date.now().toString() + Math.round(Math.random() * 1000).toString();
-      const safeStoreName = `${pdfId}-${file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_')}`;
-      const filePath = path.join(uploadsDir, safeStoreName);
-      
-      // Store the PDF permanently on disk
-      fs.writeFileSync(filePath, fileBuffer);
-      
-      // Parse content page-by-page using custom pagerender callback
-      const pageTexts: { pageNum: number; text: string }[] = [];
-      const pdfData = await pdfParse(fileBuffer, {
-        pagerender: function(pageData: any) {
-          return pageData.getTextContent().then(function(textContent: any) {
-            let lastY: number | undefined, text = '';
-            for (const item of textContent.items) {
-              if (lastY === undefined || lastY === item.transform[5]) {
-                text += item.str;
-              } else {
-                text += '\n' + item.str;
-              }
-              lastY = item.transform[5];
-            }
-            const pageNum = pageData.pageNumber || pageData.pageIndex + 1 || 1;
-            pageTexts.push({ pageNum, text });
-            return text;
-          });
-        }
-      });
-
-      const pageCount = pdfData.numpages || pageTexts.length || 1;
-
-      // Create PDF record referencing physical filePath on disk
-      const pdfInfo: PDFDocument = {
-        id: pdfId,
-        userId: req.user.id,
-        fileName: file.originalname,
-        filePath,
-        fileSize: file.size,
-        pageCount,
-        uploadDate: new Date().toISOString(),
-      };
-
-      // Extract chunks and index them page by page
-      const generatedChunks: PDFChunk[] = [];
-      let globalChunkIdx = 0;
-
-      if (pageTexts.length > 0) {
-        for (const page of pageTexts) {
-          if (!page.text || page.text.trim().length <= 5) continue;
-          const pageChunks = splitText(page.text, 800, 150);
-          for (const text of pageChunks) {
-            try {
-              const embedRes = await ai.models.embedContent({
-                model: 'gemini-embedding-2-preview',
-                contents: text,
-              });
-
-              const anyRes = embedRes as any;
-              const values = anyRes.embedding?.values || anyRes.embeddings?.[0]?.values;
-              if (values && values.length > 0) {
-                generatedChunks.push({
-                  id: `${pdfId}-chunk-${globalChunkIdx++}`,
-                  pdfId,
-                  userId: req.user.id,
-                  text,
-                  embedding: values,
-                  pageNum: page.pageNum,
-                });
-              }
-            } catch (embedError) {
-              console.error(`Error embedding chunk for page ${page.pageNum} in file ${file.originalname}:`, embedError);
-            }
-          }
-        }
-      } else {
-        // Fallback for full textual extraction
-        const extractedText = pdfData.text || '';
-        const textChunks = splitText(extractedText);
-        for (let i = 0; i < textChunks.length; i++) {
-          const text = textChunks[i];
-          try {
-            const embedRes = await ai.models.embedContent({
-              model: 'gemini-embedding-2-preview',
-              contents: text,
-            });
-
-            const anyRes = embedRes as any;
-            const values = anyRes.embedding?.values || anyRes.embeddings?.[0]?.values;
-            if (values && values.length > 0) {
-              generatedChunks.push({
-                id: `${pdfId}-chunk-${globalChunkIdx++}`,
-                pdfId,
-                userId: req.user.id,
-                text,
-                embedding: values,
-                pageNum: 1,
-              });
-            }
-          } catch (embedError) {
-            console.error(`Error embedding chunk ${i} for file ${file.originalname}:`, embedError);
-          }
-        }
-      }
-
-      // Store in DB
-      db.savePDF(pdfInfo);
-      if (generatedChunks.length > 0) {
-        db.saveChunks(generatedChunks);
-      }
+      const pdfInfo = await processPDFBuffer(req.user.id, file.originalname, file.buffer);
       processedDocs.push(pdfInfo);
     }
 
@@ -515,6 +607,137 @@ app.post('/api/pdf/upload', authenticateToken, upload.array('files'), async (req
   } catch (error: any) {
     console.error('Error in upload controller:', error);
     res.status(500).json({ error: error.message || 'Failed to process document uploads' });
+  }
+});
+
+// PDF Upload Chunk Route (Stores independent chunks in temporary slice buffers to bypass Nginx limitations)
+app.post('/api/pdf/upload-chunk', authenticateToken, upload.single('chunk'), async (req: any, res) => {
+  try {
+    const { uploadId, chunkIndex, totalChunks } = req.body;
+    if (!uploadId || chunkIndex === undefined || !totalChunks) {
+      return res.status(400).json({ error: 'Missing required chunk metadata: uploadId, chunkIndex, totalChunks' });
+    }
+
+    const user = db.getUserById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Proactive quota check inside the upload chunk route
+    const userPdfs = db.getPDFsByUser(req.user.id);
+    const existingCount = userPdfs.length;
+    const tier = user.tier || 'free';
+    
+    let maxAllowed = 1; // Free and Basic get max 1 PDF
+    if (tier === 'pro') {
+      maxAllowed = 2; // Pro gets max 2 PDFs
+    } else if (tier === 'premium') {
+      maxAllowed = 999; // Premium allows virtually unlimited
+    }
+
+    if (existingCount + 1 > maxAllowed) {
+      return res.status(400).json({
+        error: 'PDF vault limit reached',
+        tier,
+        currentCount: existingCount,
+        maxAllowed,
+        message: `Your active ${tier.toUpperCase()} Plan allows a maximum of ${maxAllowed} PDF upload(s). Upgrade your tier to upload more files.`
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No chunk file was uploaded' });
+    }
+
+    const chunkDir = path.join(uploadsDir, `chunks-${uploadId}`);
+    if (!fs.existsSync(chunkDir)) {
+      fs.mkdirSync(chunkDir, { recursive: true });
+    }
+
+    const chunkPath = path.join(chunkDir, `chunk-${chunkIndex}`);
+    fs.writeFileSync(chunkPath, req.file.buffer);
+
+    res.json({ success: true, chunkIndex: parseInt(chunkIndex, 10) });
+  } catch (err: any) {
+    console.error('Error in PDF chunk upload:', err);
+    res.status(500).json({ error: err.message || 'Chunk upload failed' });
+  }
+});
+
+// PDF Assemble Route (Concatenates sequential chunks and processes the full PDF buffer without body-size limits)
+app.post('/api/pdf/assemble', authenticateToken, async (req: any, res) => {
+  try {
+    const { uploadId, filename, totalChunks } = req.body;
+    if (!uploadId || !filename || !totalChunks) {
+      return res.status(400).json({ error: 'Missing required assembly metadata: uploadId, filename, totalChunks' });
+    }
+
+    const user = db.getUserById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Verify user can upload another PDF
+    const userPdfs = db.getPDFsByUser(req.user.id);
+    const existingCount = userPdfs.length;
+    const tier = user.tier || 'free';
+    
+    let maxAllowed = 1; // Free and Basic get max 1 PDF
+    if (tier === 'pro') {
+      maxAllowed = 2; // Pro gets max 2 PDFs
+    } else if (tier === 'premium') {
+      maxAllowed = 999; // Premium allows 3 or more (essentially unlimited)
+    }
+
+    if (existingCount + 1 > maxAllowed) {
+      return res.status(400).json({
+        error: 'PDF vault limit reached',
+        tier,
+        currentCount: existingCount,
+        maxAllowed,
+        message: `Your active ${tier.toUpperCase()} Plan allows a maximum of ${maxAllowed} PDF upload(s). Upgrade your tier to upload more files.`
+      });
+    }
+
+    // Verify Gemini API key is configured
+    try {
+      getGeminiClient();
+    } catch (e: any) {
+      return res.status(503).json({ error: 'Gemini API key is missing. Please set GEMINI_API_KEY in the Secrets panel.' });
+    }
+
+    const chunkDir = path.join(uploadsDir, `chunks-${uploadId}`);
+    if (!fs.existsSync(chunkDir)) {
+      return res.status(404).json({ error: 'Upload transaction chunk directory not found' });
+    }
+
+    // Verify all chunks are present and concatenate them sequentially
+    const chunkBuffers: Buffer[] = [];
+    const total = parseInt(totalChunks, 10);
+    for (let idx = 0; idx < total; idx++) {
+      const chunkPath = path.join(chunkDir, `chunk-${idx}`);
+      if (!fs.existsSync(chunkPath)) {
+        return res.status(400).json({ error: `Missing chunk at index ${idx}. Please re-upload.` });
+      }
+      chunkBuffers.push(fs.readFileSync(chunkPath));
+    }
+
+    const fullFileBuffer = Buffer.concat(chunkBuffers);
+
+    // Call unified processor to parse format and map vector chunks
+    const pdfInfo = await processPDFBuffer(req.user.id, filename, fullFileBuffer);
+
+    // Clean up temporary chunk folder
+    try {
+      fs.rmSync(chunkDir, { recursive: true, force: true });
+    } catch (cleanupErr) {
+      console.warn(`[ASSEMBLE] Failed to remove slice chunks temp directory ${chunkDir}:`, cleanupErr);
+    }
+
+    res.status(201).json([pdfInfo]);
+  } catch (error: any) {
+    console.error('Error in PDF assemble controller:', error);
+    res.status(500).json({ error: error.message || 'Failed to assemble and process PDF chunks' });
   }
 });
 
@@ -594,7 +817,7 @@ app.post('/api/chats/:id/message', authenticateToken, upload.single('questionFil
     if (tier === 'free') {
       const userPdfsCount = db.getPDFsByUser(req.user.id).length;
       if (promptCount >= 5 || userPdfsCount >= 1) {
-        return res.status(403).json({
+        return res.status(400).json({
           error: 'Free credit limit reached or document limit reached',
           promptLimitReached: true,
           message: 'Your free tier has completed. You have either hit the limit of 5 free prompt requests or indexed 1 PDF document. Please upgrade your plan to continue asking questions.'
@@ -603,10 +826,27 @@ app.post('/api/chats/:id/message', authenticateToken, upload.single('questionFil
     } else {
       // Basic, Pro, or Premium status checks:
       if (paymentStatus !== 'approved') {
-        return res.status(403).json({
+        return res.status(400).json({
           error: 'Payment pending approval',
           paymentPendingApproval: true,
           message: 'Your payment is being reviewed. The app will be unlocked as soon as an admin approves your transaction proof.'
+        });
+      }
+
+      // Proactive prompt count caps for Basic & Pro
+      if (tier === 'basic' && promptCount >= 50) {
+        return res.status(400).json({
+          error: 'Basic plan credit limit reached',
+          promptLimitReached: true,
+          message: 'You have reached the limit of 50 prompts on your Basic plan. Please upgrade your plan to continue.'
+        });
+      }
+
+      if (tier === 'pro' && promptCount >= 50) {
+        return res.status(400).json({
+          error: 'Pro plan credit limit reached',
+          promptLimitReached: true,
+          message: 'You have reached the monthly limit of 50 prompts on your Pro plan. Please upgrade to Premium to continue.'
         });
       }
     }
@@ -681,10 +921,30 @@ app.post('/api/chats/:id/message', authenticateToken, upload.single('questionFil
     // 1. Convert user's question into embedding
     let queryEmbedding: number[] = [];
     try {
-      const embedRes = await ai.models.embedContent({
-        model: 'gemini-embedding-2-preview',
-        contents: queryEmbeddingText,
+      // Use retryWithBackoff and fallback model chain for query embedding to protect against transient/rate issues
+      const embedRes = await retryWithBackoff(async () => {
+        try {
+          return await ai.models.embedContent({
+            model: 'gemini-embedding-2',
+            contents: queryEmbeddingText,
+          });
+        } catch (err: any) {
+          console.warn(`[QUERY] Primary embedding 'gemini-embedding-2' failed, trying preview. Reason:`, err?.message || err);
+          try {
+            return await ai.models.embedContent({
+              model: 'gemini-embedding-2-preview',
+              contents: queryEmbeddingText,
+            });
+          } catch (previewErr: any) {
+            console.warn(`[QUERY] Preview embedding failed, trying legacy. Reason:`, previewErr?.message || previewErr);
+            return await ai.models.embedContent({
+              model: 'gemini-embedding-001',
+              contents: queryEmbeddingText,
+            });
+          }
+        }
       });
+
       const anyRes = embedRes as any;
       queryEmbedding = anyRes.embedding?.values || anyRes.embeddings?.[0]?.values || [];
     } catch (e: any) {
@@ -958,6 +1218,41 @@ app.post('/api/admin/approve-payment', authenticateToken, requireAdmin, (req: an
   }
 });
 
+// Submit a contact message (Publicly available)
+app.post('/api/contact', (req, res) => {
+  try {
+    const { name, email, subject, message } = req.body;
+    if (!name || !email || !subject || !message) {
+      return res.status(400).json({ error: 'All fields (name, email, subject, message) are required' });
+    }
+
+    const newMessage = {
+      id: `msg-${Date.now()}`,
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
+      subject: subject.trim(),
+      message: message.trim(),
+      createdAt: new Date().toISOString()
+    };
+
+    db.saveContactMessage(newMessage);
+
+    res.json({ message: 'Your message has been received! Our administrator (kmulatu21@gmail.com) will review and reply soon.', success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// View all contact messages (Admin only)
+app.get('/api/admin/messages', authenticateToken, requireAdmin, (req: any, res) => {
+  try {
+    const messages = db.getContactMessages();
+    res.json(messages);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Fallback for unmatched API routes to prevent Vite SPA HTML responses
 app.all('/api/*', (req, res) => {
   res.status(404).json({ error: `API route ${req.method} ${req.path} not found` });
@@ -1012,6 +1307,7 @@ async function startServer() {
 
   if (!process.env.VERCEL) {
     if (process.env.NODE_ENV !== 'production') {
+      const { createServer: createViteServer } = await import('vite');
       const vite = await createViteServer({
         server: { middlewareMode: true },
         appType: 'spa',

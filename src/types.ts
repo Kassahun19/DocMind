@@ -67,3 +67,13 @@ export interface DashboardStats {
   totalChats: number;
   storageUsed: number; // in bytes
 }
+
+export interface ContactMessage {
+  id: string;
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+  createdAt: string;
+}
+

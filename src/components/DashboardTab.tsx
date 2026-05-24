@@ -19,6 +19,7 @@ export default function DashboardTab({ stats, pdfs, authToken, onRefresh, user }
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -64,7 +65,7 @@ export default function DashboardTab({ stats, pdfs, authToken, onRefresh, user }
     fileInputRef.current?.click();
   };
 
-  // Upload controller
+  // Upload controller with client-side chunking
   const uploadFiles = async (fileList: FileList) => {
     const validFiles: File[] = [];
     for (let i = 0; i < fileList.length; i++) {
@@ -79,43 +80,134 @@ export default function DashboardTab({ stats, pdfs, authToken, onRefresh, user }
       return;
     }
 
+    // Client-side visual check on PDF plan constraints and limits
+    const existingCount = pdfs.length;
+    const tier = user?.tier || 'free';
+    let maxAllowed = 1; // Free and Basic tiers allow 1 PDF
+    if (tier === 'pro') {
+      maxAllowed = 2; // Pro tier allows 2 PDFs
+    } else if (tier === 'premium') {
+      maxAllowed = 999; // Premium allows virtually unlimited PDFs
+    }
+
+    if (existingCount + validFiles.length > maxAllowed) {
+      const upgradeMessage = tier === 'free' || tier === 'basic'
+        ? 'Upgrade your tier to Pro (max 2) or Premium (unlimited) to upload more files.'
+        : tier === 'pro'
+          ? 'Upgrade your tier to Premium (unlimited) to upload more files.'
+          : '';
+      setUploadError(`PDF vault limit reached. Your active ${tier.toUpperCase()} Plan allows a maximum of ${maxAllowed} PDF upload(s). ${upgradeMessage}`);
+      return;
+    }
+
     setUploading(true);
     setUploadError('');
     setUploadSuccess(false);
-
-    const formData = new FormData();
-    validFiles.forEach(file => {
-      formData.append('files', file);
-    });
+    setUploadProgress('Preparing documents...');
 
     try {
-      const res = await fetch('/api/pdf/upload', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${authToken}`
-        },
-        body: formData
-      });
+      const CHUNK_SIZE = 500 * 1024; // 500KB chunks are safely below any 1MB nginx reverse proxy limit
 
-      const resText = await res.text();
-      let data: any;
-      try {
-        data = JSON.parse(resText);
-      } catch (parseErr) {
-        throw new Error(res.ok ? 'Received invalid response format from server.' : `Server error (${res.status}): ${resText.substring(0, 150)}`);
-      }
+      for (const file of validFiles) {
+        if (file.size <= CHUNK_SIZE) {
+          // Fast path for small documents: standard single request
+          setUploadProgress(`Uploading ${file.name}...`);
+          const formData = new FormData();
+          formData.append('files', file);
 
-      if (!res.ok) {
-        throw new Error(data.error || 'Uploading pdf files failed');
+          const res = await fetch('/api/pdf/upload', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${authToken}`
+            },
+            body: formData
+          });
+
+          const resText = await res.text();
+          let data: any;
+          try {
+            data = JSON.parse(resText);
+          } catch (parseErr) {
+            throw new Error(res.ok ? 'Received invalid response format from server.' : `Server error (${res.status}): ${resText.substring(0, 150)}`);
+          }
+
+          if (!res.ok) {
+            throw new Error(data.error || 'Uploading PDF files failed');
+          }
+        } else {
+          // Robust client-side chunked upload for larger documents
+          const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+          const uploadId = Date.now() + '-' + Math.round(Math.random() * 100000);
+
+          for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+            setUploadProgress(`Uploading "${file.name}": chunk ${chunkIndex + 1} of ${totalChunks}...`);
+
+            const start = chunkIndex * CHUNK_SIZE;
+            const end = Math.min(start + CHUNK_SIZE, file.size);
+            const chunkBlob = file.slice(start, end);
+
+            const formData = new FormData();
+            formData.append('uploadId', uploadId);
+            formData.append('chunkIndex', chunkIndex.toString());
+            formData.append('totalChunks', totalChunks.toString());
+            formData.append('chunk', chunkBlob, file.name);
+
+            const res = await fetch('/api/pdf/upload-chunk', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${authToken}`
+              },
+              body: formData
+            });
+
+            if (!res.ok) {
+              const resText = await res.text();
+              let errData: any;
+              try {
+                errData = JSON.parse(resText);
+              } catch (e) {}
+              throw new Error(errData?.error || `Failed uploading fragment chunk idx ${chunkIndex + 1}. Error Code ${res.status}`);
+            }
+          }
+
+          // Trigger server-side assembly, text parsing, and embedding indexation
+          setUploadProgress('Analyzing, text parsing, and embedding indexing (please wait, it may take a few seconds)...');
+
+          const assembleRes = await fetch('/api/pdf/assemble', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({
+              uploadId,
+              filename: file.name,
+              totalChunks
+            })
+          });
+
+          const assembleText = await assembleRes.text();
+          let assembleData: any;
+          try {
+            assembleData = JSON.parse(assembleText);
+          } catch (parseErr) {
+            throw new Error(assembleRes.ok ? 'Invalid format from server.' : `Assembly error ${assembleRes.status}: ${assembleText.substring(0, 150)}`);
+          }
+
+          if (!assembleRes.ok) {
+            throw new Error(assembleData.error || 'Failed assembling and mapping vector index');
+          }
+        }
       }
 
       setUploadSuccess(true);
       onRefresh();
-      setTimeout(() => setUploadSuccess(false), 4000);
+      setTimeout(() => setUploadSuccess(false), 4500);
     } catch (err: any) {
       setUploadError(err.message || 'Connecting to PDF engine failed');
     } finally {
       setUploading(false);
+      setUploadProgress('');
     }
   };
 
@@ -251,7 +343,7 @@ export default function DashboardTab({ stats, pdfs, authToken, onRefresh, user }
         {uploading && (
           <div className="mt-6 flex flex-col items-center gap-3">
             <div className="h-6 w-6 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-            <p className="text-indigo-400 text-xs font-semibold uppercase tracking-wide animate-pulse">Extracting textual documents &amp; mapping vector nodes...</p>
+            <p className="text-indigo-400 text-xs font-semibold uppercase tracking-wide animate-pulse">{uploadProgress || "Extracting textual documents & mapping vector nodes..."}</p>
           </div>
         )}
 

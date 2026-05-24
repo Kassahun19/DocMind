@@ -10,6 +10,7 @@ let memoryDbCache: {
   pdfs: PDFDocument[];
   chunks: PDFChunk[];
   chatSessions: ChatSession[];
+  contactMessages?: any[];
 } | null = null;
 
 // Ensure database can be written in serverless functions (like Vercel) by leveraging the /tmp directory
@@ -29,7 +30,8 @@ if (process.env.VERCEL) {
           users: [],
           pdfs: [],
           chunks: [],
-          chatSessions: []
+          chatSessions: [],
+          contactMessages: []
         }, null, 2), 'utf-8');
         console.log('Vercel serverless prep: Created empty DB table in /tmp/db.json');
       }
@@ -53,7 +55,8 @@ function initializeDb() {
         users: [],
         pdfs: [],
         chunks: [],
-        chatSessions: []
+        chatSessions: [],
+        contactMessages: []
       }, null, 2), 'utf-8');
     }
   } catch (err) {
@@ -67,10 +70,13 @@ function readData(): {
   pdfs: PDFDocument[];
   chunks: PDFChunk[];
   chatSessions: ChatSession[];
+  contactMessages: any[];
 } {
   // If memory cache exists, return it directly
   if (memoryDbCache) {
-    return memoryDbCache;
+    // Ensure array is initialized
+    memoryDbCache.contactMessages = memoryDbCache.contactMessages || [];
+    return memoryDbCache as any;
   }
 
   // Attempt to read from file
@@ -86,7 +92,7 @@ function readData(): {
 
   // Fallback if reading failed or produced empty cache
   if (!memoryDbCache) {
-    memoryDbCache = { users: [], pdfs: [], chunks: [], chatSessions: [] };
+    memoryDbCache = { users: [], pdfs: [], chunks: [], chatSessions: [], contactMessages: [] };
   }
 
   // Ensure default structure
@@ -94,8 +100,9 @@ function readData(): {
   memoryDbCache.pdfs = memoryDbCache.pdfs || [];
   memoryDbCache.chunks = memoryDbCache.chunks || [];
   memoryDbCache.chatSessions = memoryDbCache.chatSessions || [];
+  memoryDbCache.contactMessages = memoryDbCache.contactMessages || [];
 
-  return memoryDbCache;
+  return memoryDbCache as any;
 }
 
 function writeData(data: any): void {
@@ -294,5 +301,18 @@ export const db = {
       totalChats,
       storageUsed
     };
+  },
+
+  getContactMessages() {
+    const data = readData();
+    return data.contactMessages || [];
+  },
+
+  saveContactMessage(msg: any) {
+    const data = readData();
+    data.contactMessages = data.contactMessages || [];
+    data.contactMessages.push(msg);
+    writeData(data);
+    return msg;
   }
 };

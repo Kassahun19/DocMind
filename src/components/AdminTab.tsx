@@ -21,6 +21,15 @@ interface AdminUser {
   paymentReceiptData?: string | null;
 }
 
+interface AdminMessage {
+  id: string;
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+  createdAt: string;
+}
+
 interface AdminTabProps {
   authToken: string;
   currentUserEmail: string;
@@ -31,6 +40,8 @@ type FilterType = 'all' | 'pending' | 'premium' | 'free';
 
 export default function AdminTab({ authToken, currentUserEmail, onRefreshCurrentUser }: AdminTabProps) {
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [messages, setMessages] = useState<AdminMessage[]>([]);
+  const [adminSubTab, setAdminSubTab] = useState<'users' | 'messages'>('users');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -61,8 +72,30 @@ export default function AdminTab({ authToken, currentUserEmail, onRefreshCurrent
     }
   };
 
+  const fetchMessages = async () => {
+    try {
+      const res = await fetch('/api/admin/messages', {
+        headers: {
+          'Authorization': `Bearer ${authToken}`
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMessages(data);
+      }
+    } catch (err) {
+      console.error('Error fetching admin messages:', err);
+    }
+  };
+
+  const handleSyncData = async () => {
+    setLoading(true);
+    await Promise.all([fetchUsers(), fetchMessages()]);
+    setLoading(false);
+  };
+
   useEffect(() => {
-    fetchUsers();
+    handleSyncData();
   }, [authToken]);
 
   // General field updater to make the admin panel extremely flexible
@@ -163,7 +196,7 @@ export default function AdminTab({ authToken, currentUserEmail, onRefreshCurrent
         </div>
 
         <button
-          onClick={fetchUsers}
+          onClick={handleSyncData}
           disabled={loading}
           className="px-4 py-2 bg-gradient-to-r from-slate-900 to-slate-950 hover:from-slate-850 hover:to-slate-900 disabled:opacity-50 text-slate-300 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 border border-slate-800 cursor-pointer w-full sm:w-auto shrink-0 select-none shadow-sm"
         >
@@ -219,6 +252,35 @@ export default function AdminTab({ authToken, currentUserEmail, onRefreshCurrent
         </div>
       </div>
 
+      {/* Admin Module Sub-Tabs selection */}
+      <div className="flex border-b border-slate-900 gap-6">
+        <button
+          onClick={() => setAdminSubTab('users')}
+          className={`pb-3 text-xs font-bold tracking-wider uppercase border-b-2 px-1 transition cursor-pointer select-none ${
+            adminSubTab === 'users'
+              ? 'border-indigo-500 text-slate-100'
+              : 'border-transparent text-slate-500 hover:text-slate-300'
+          }`}
+        >
+          User Accounts &amp; Payments ({users.length})
+        </button>
+        <button
+          onClick={() => setAdminSubTab('messages')}
+          className={`pb-3 text-xs font-bold tracking-wider uppercase border-b-2 px-1 transition relative cursor-pointer select-none ${
+            adminSubTab === 'messages'
+              ? 'border-indigo-500 text-slate-100'
+              : 'border-transparent text-slate-500 hover:text-slate-300'
+          }`}
+        >
+          Contact Messages Received ({messages.length})
+          {messages.length > 0 && (
+            <span className="absolute -top-1 -right-2 px-1.5 py-0.2 rounded-full bg-indigo-500 text-slate-950 text-[8px] font-extrabold font-mono">
+              {messages.length}
+            </span>
+          )}
+        </button>
+      </div>
+
       {error && (
         <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-center gap-2.5">
           <AlertCircle className="h-4 w-4 shrink-0" />
@@ -233,8 +295,10 @@ export default function AdminTab({ authToken, currentUserEmail, onRefreshCurrent
         </div>
       )}
 
-      {/* 3. Filtering Controls & Quick-Search Grid */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 p-2 rounded-2xl bg-slate-900/20 border border-slate-900">
+      {adminSubTab === 'users' ? (
+        <>
+          {/* 3. Filtering Controls & Quick-Search Grid */}
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 p-2 rounded-2xl bg-slate-900/20 border border-slate-900">
         <div className="flex flex-wrap items-center gap-1">
           <button
             onClick={() => setActiveFilter('all')}
@@ -534,6 +598,63 @@ export default function AdminTab({ authToken, currentUserEmail, onRefreshCurrent
           )}
         </div>
       </div>
+    </>
+  ) : (
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row justify-between items-center gap-3 p-4 bg-slate-900/20 border border-slate-900 rounded-2xl">
+        <div>
+          <h3 className="text-sm font-bold text-slate-200">
+            DocuMind AI Feedback Inbox ({messages.length})
+          </h3>
+          <p className="text-[11px] text-slate-500 mt-1">
+            Real-time messages submitted by visitors and clients
+          </p>
+        </div>
+        <div className="text-xs text-slate-500 bg-slate-955 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-900 flex items-center gap-2">
+          <span>Forwarding Destination:</span>
+          <span className="text-indigo-400 font-mono font-medium underline">kmulatu21@gmail.com</span>
+        </div>
+      </div>
+
+      {messages.length === 0 ? (
+        <div className="p-16 text-center border border-dashed border-slate-900 rounded-2xl bg-slate-950/20">
+          <FileText className="h-10 w-10 text-slate-800 mx-auto mb-3" />
+          <p className="text-slate-400 font-medium">No contact messages received yet.</p>
+          <p className="text-[11px] text-slate-600 mt-1">When users fill out the "Contact Us" form, their submissions appear here instantly.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4">
+          {[...messages].reverse().map((m) => (
+            <div 
+              key={m.id} 
+              className="p-5 bg-slate-900/30 border border-slate-900 rounded-2xl space-y-3 hover:border-slate-800 transition"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-950 pb-3">
+                <div>
+                  <span className="text-[10px] uppercase font-mono tracking-wider font-extrabold text-indigo-400">
+                    Subject: {m.subject}
+                  </span>
+                  <h4 className="text-sm font-semibold text-slate-100 mt-1">
+                    From: {m.name}
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Email: <a href={`mailto:${m.email}`} className="text-cyan-400 hover:underline">{m.email}</a>
+                  </p>
+                </div>
+                <span className="text-[10px] text-slate-500 font-mono bg-slate-950 px-2.5 py-1.5 rounded-lg border border-slate-900">
+                  {new Date(m.createdAt).toLocaleString()}
+                </span>
+              </div>
+              
+              <div className="text-xs text-slate-300 bg-slate-950/60 p-4 rounded-xl border border-slate-900/80 leading-relaxed whitespace-pre-wrap select-text">
+                {m.message}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )}
 
       {/* 5. Direct Lightbox Modal Image Receipt Viewer */}
       {previewReceipt && (

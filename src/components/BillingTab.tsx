@@ -24,8 +24,8 @@ export default function BillingTab({ user, authToken, onRefreshUser }: BillingTa
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      if (file.size > 20 * 1024 * 1024) {
-        setError('Receipt file size is too large (max 20MB).');
+      if (file.size > 10 * 1024 * 1024) {
+        setError('Receipt file size is too large (max 10MB limit).');
         return;
       }
       setReceiptFile(file);
@@ -51,10 +51,10 @@ export default function BillingTab({ user, authToken, onRefreshUser }: BillingTa
       period: 'per month',
       tagline: 'Ideal for short-term projects and research assignments.',
       features: [
+        'Get access to 1 month of unrestricted 50 Prompts',
         'Only one PDF upload on the Document Vault',
         'Semantic Embeddings indexing',
-        'Accurate Q&A with grounded text citations',
-        '1 month of unrestricted access'
+        'Accurate Q&A with grounded text citations'
       ],
       linkText: 'Go Basic',
     },
@@ -65,10 +65,10 @@ export default function BillingTab({ user, authToken, onRefreshUser }: BillingTa
       period: 'per year',
       tagline: 'Supercharge your daily studying & academic inquiries',
       features: [
+        'Get access to 1 full year of unrestricted 600 Prompts (limited only to 50 prompts/month for 12 months, monthly basis)',
         'Two PDF uploads on the Document Vault',
         'Faster token generation processing',
-        'Interactive questions file PDF processor',
-        '1 full year of security-approved access'
+        'Interactive questions file PDF processor'
       ],
       linkText: 'Go Pro',
       popular: true,
@@ -80,10 +80,10 @@ export default function BillingTab({ user, authToken, onRefreshUser }: BillingTa
       period: 'for ever',
       tagline: 'Ultimate lifelong scholarly setup. One-time payment.',
       features: [
+        'Get access to lifetime of unlimited Prompts',
         'Three or more PDF uploads on the Document Vault',
         'Unrestricted features & zero latency throttling',
-        'Highest priority indexing vector pipelines',
-        'Lifetime access without recurring bills'
+        'Highest priority indexing vector pipelines'
       ],
       linkText: 'Go Premium',
     }
@@ -250,28 +250,56 @@ export default function BillingTab({ user, authToken, onRefreshUser }: BillingTa
       <div className="grid grid-cols-1 md:grid-cols-5 gap-8 bg-slate-950 border border-slate-900 rounded-2xl p-6 md:p-8">
         
         {/* Left column explanation */}
-        <div className="md:col-span-2 space-y-4">
-          <h3 className="text-lg font-bold text-slate-200 tracking-tight flex items-center gap-2">
-            <Coins className="h-5 w-5 text-indigo-400" />
-            Verification Steps
-          </h3>
-          <p className="text-xs text-slate-400 leading-relaxed">
-            Follow these swift credentials verification instructions to reactivate and upgrade DocuMind AI features immediately:
-          </p>
+        <div className="md:col-span-2 space-y-6">
+          <div className="space-y-3">
+            <h3 className="text-lg font-bold text-slate-200 tracking-tight flex items-center gap-2">
+              <Coins className="h-5 w-5 text-indigo-400" />
+              Upgrade Verification
+            </h3>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Complete your payment using either our digital external checkout links or the direct manual bank deposit options listed below. Once you complete the transaction, take a screenshot of the confirmation SMS or bank receipt and submit the proof form to reactivate your plan.
+            </p>
+          </div>
+
+          {/* Majestic Manual Bank Account Details Box */}
+          <div className="p-4 rounded-xl border border-indigo-505 border-indigo-500/20 bg-indigo-500/5 space-y-3">
+            <div className="border-b border-indigo-500/10 pb-2">
+              <span className="text-[10px] uppercase font-bold tracking-widest text-indigo-400">Manual Wire Options</span>
+              <h4 className="text-xs font-bold text-slate-350 mt-1">Full Beneficiary Name:</h4>
+              <p className="text-xs font-semibold text-white select-all">Kassahun Mulatu Kebede</p>
+            </div>
+
+            <div className="space-y-2 text-xs">
+              <div className="flex justify-between items-center bg-slate-950/70 p-2 border border-slate-900 rounded-lg">
+                <span className="text-slate-400 text-[11px]">Commercial Bank of Ethiopia (CBE)</span>
+                <span className="font-mono text-cyan-400 font-bold select-all">1000183217198</span>
+              </div>
+              
+              <div className="flex justify-between items-center bg-slate-950/70 p-2 border border-slate-900 rounded-lg">
+                <span className="text-slate-400 text-[11px]">Bank of Abyssinia (BOA)</span>
+                <span className="font-mono text-cyan-400 font-bold select-all">32419186</span>
+              </div>
+
+              <div className="flex justify-between items-center bg-slate-950/70 p-2 border border-slate-900 rounded-lg">
+                <span className="text-slate-400 text-[11px]">Bunna Bank (BB)</span>
+                <span className="font-mono text-cyan-400 font-bold select-all">3609501002452</span>
+              </div>
+
+              <div className="flex justify-between items-center bg-indigo-500/10 p-2 border border-indigo-500/10 rounded-lg">
+                <span className="text-slate-300 text-[11px] font-bold">Telebirr (Mobile)</span>
+                <span className="font-mono text-indigo-300 font-bold select-all">0915508167</span>
+              </div>
+            </div>
+
+            <p className="text-[10px] text-slate-500 italic leading-snug">
+              Note: Capture a screenshot of your transfer confirmation message or paper receipt, then upload it to your document proof below.
+            </p>
+          </div>
 
           <div className="space-y-3.5 text-xs text-slate-400 pl-1">
             <div className="flex gap-2.5">
-              <span className="h-5 w-5 rounded-md bg-slate-900 text-slate-300 flex items-center justify-center font-bold text-[10px] shrink-0 border border-slate-800">
+              <span className="h-5 w-5 rounded bg-slate-900 text-slate-300 flex items-center justify-center font-bold text-[10px] shrink-0 border border-slate-800">
                 1
-              </span>
-              <p>
-                Click one of the <strong className="text-slate-200">Buna</strong> links above based on your plan, or pay manually at <a href="https://ye-buna.com/kassahunmulatu" target="_blank" rel="noreferrer" className="text-cyan-400 underline hover:text-cyan-300">ye-buna.com/kassahunmulatu</a>.
-              </p>
-            </div>
-
-            <div className="flex gap-2.5">
-              <span className="h-5 w-5 rounded-md bg-slate-900 text-slate-300 flex items-center justify-center font-bold text-[10px] shrink-0 border border-slate-800">
-                2
               </span>
               <p>
                 Transfer the exact plan price fee in ETB (ETB 100, ETB 500, or ETB 1000).
@@ -279,20 +307,11 @@ export default function BillingTab({ user, authToken, onRefreshUser }: BillingTa
             </div>
 
             <div className="flex gap-2.5">
-              <span className="h-5 w-5 rounded-md bg-slate-900 text-slate-300 flex items-center justify-center font-bold text-[10px] shrink-0 border border-slate-800">
-                3
+              <span className="h-5 w-5 rounded bg-slate-900 text-slate-300 flex items-center justify-center font-bold text-[10px] shrink-0 border border-slate-800">
+                2
               </span>
               <p>
-                Save your Transfer Confirmation Code (the transaction ID/reference code issued by your bank or payment platform).
-              </p>
-            </div>
-
-            <div className="flex gap-2.5">
-              <span className="h-5 w-5 rounded-md bg-slate-900 text-slate-300 flex items-center justify-center font-bold text-[10px] shrink-0 border border-slate-800">
-                4
-              </span>
-              <p>
-                Submit the form on the right. Once verified by our administrators, your status will instantly update!
+                Save your Transfer Confirmation details. Max proof attachment size is <strong className="text-indigo-400">10 MB</strong>.
               </p>
             </div>
           </div>
