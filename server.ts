@@ -1081,6 +1081,188 @@ RULES OF ENGAGEMENT:
   }
 });
 
+// Floating/Hanging AI Assistant grounding chatbot
+app.post('/api/assistant/chat', async (req: any, res) => {
+  try {
+    const { message, history, source } = req.body; // source is 'document' | 'website'
+
+    // Check optional authentication token for logged-in status
+    let userId: string | null = null;
+    const authHeader = req.headers['authorization'];
+    if (authHeader) {
+      const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7) : authHeader;
+      if (token) {
+        try {
+          const decoded = jwt.verify(token, JWT_SECRET) as any;
+          userId = decoded.id;
+        } catch (e) {
+          // Proceed as guest if token is invalid or expired
+        }
+      }
+    }
+
+    // Initialize Gemini API client
+    let ai;
+    try {
+      ai = getGeminiClient();
+    } catch (e) {
+      return res.status(503).json({ error: 'Gemini API not configured. Please add GEMINI_API_KEY in Secrets.' });
+    }
+
+    // Grounding knowledge retrieval
+    let documentContext = '';
+    const sources: any[] = [];
+
+    if (source === 'document' && userId) {
+      const userPdfs = db.getPDFsByUser(userId);
+      if (userPdfs.length > 0) {
+        // Query Embeddings with fallback
+        let queryEmbedding: number[] = [];
+        try {
+          const embedRes = await retryWithBackoff(async () => {
+            try {
+              return await ai.models.embedContent({
+                model: 'gemini-embedding-2',
+                contents: message,
+              });
+            } catch (err) {
+              try {
+                return await ai.models.embedContent({
+                  model: 'gemini-embedding-2-preview',
+                  contents: message,
+                });
+              } catch (previewErr) {
+                return await ai.models.embedContent({
+                  model: 'gemini-embedding-001',
+                  contents: message,
+                });
+              }
+            }
+          });
+          const anyRes = embedRes as any;
+          queryEmbedding = anyRes.embedding?.values || anyRes.embeddings?.[0]?.values || [];
+        } catch (e) {
+          console.error('Embedding generation failed for assistant:', e);
+        }
+
+        if (queryEmbedding && queryEmbedding.length > 0) {
+          const matches = db.searchSimilarChunks(userId, queryEmbedding, 4);
+          matches.forEach((match, idx) => {
+            const doc = db.getPDF(match.chunk.pdfId);
+            const filename = doc ? doc.fileName : 'Unknown Document';
+            const pageNum = match.chunk.pageNum || 1;
+            documentContext += `[Stored Doc Reference ${idx + 1}: "${filename}" (Page ${pageNum})]:\n${match.chunk.text}\n\n`;
+            sources.push({
+              pdfId: match.chunk.pdfId,
+              fileName: filename,
+              text: match.chunk.text,
+              pageNum,
+            });
+          });
+        }
+      }
+    }
+
+    const websiteKnowledge = `
+WEBSITE KNOWLEDGE BASE (DocuMind AI):
+- Name: DocuMind AI
+- Description: Advanced Interactive PDF Intelligence and Q&A Knowledge Vault.
+- Features: 
+  * Document Vault Tab: For uploading and page-level PDF parsing.
+  * Q&A Agent Tab: High-speed semantic similarity searches to converse with your documents.
+  * Billing Tab: Premium feature upgrades and payment tracker.
+  * Admin Tab: Exclusive approval dashboard for verified users.
+- Subscription Plans:
+  1. Free Plan ($0): Allows 1 uploaded PDF, up to 5 free chat prompts.
+  2. Basic Plan ($9.99/mo): Allows 1 uploaded PDF, up to 50 prompts per month.
+  3. Pro Plan ($29.99/mo): Allows up to 2 uploaded PDFs, 50 prompts per month, rapid indexing.
+  4. Premium Plan ($49.99/mo): Multi-document storage (virtually unlimited), unlimited Q&A prompts, instant automatic status mapping.
+- Custom Admin/Test Features:
+  * Users can promote themselves to Admin instantly by pressing "Test Admin View" inside the profile/user navigation menu.
+  * Rapid Administrative Login Bypass:
+    - Email: kmulatu21@gmail.com
+    - Password: admin@docmind
+    - Entering these details automatically logs you in with Developer Administrator status and fully unlocks the Premium active subscription plan.
+- Support Inbox: Administered by kmulatu21@gmail.com and kassahunmulatu273@gmail.com.
+`;
+
+    let systemInstruction = `You are Mindy, the cute, witty, highly appealing and ultra-modern interactive AI support companion for DocuMind AI.
+Your personality is incredibly helpful, charming, intelligent, and clean. You help both guests and registered members answer questions about their uploaded records or learn about the platform.
+
+${websiteKnowledge}
+
+`;
+
+    if (source === 'document') {
+      if (userId) {
+        if (documentContext) {
+          systemInstruction += `CONTEXT FROM USER DOCUMENT VAULT:
+${documentContext}
+
+RULES OF ENGAGEMENT:
+1. Rely strictly on the Context retrieved from stored files to answer the user's question.
+2. Formulate exceptionally clean, brief, and beautifully organized answers.
+3. Natural mention of document names and page numbers (e.g., textbook.pdf, page 4). Do NOT make up facts.
+`;
+        } else {
+          systemInstruction += `RULES OF ENGAGEMENT:
+1. The user's document vault is currently empty.
+2. Politely and engagingly inform them that they have no files uploaded yet.
+3. Motivate them to visit the 'Document Vault' tab on the dashboard to upload their first PDF.
+`;
+        }
+      } else {
+        systemInstruction += `RULES OF ENGAGEMENT:
+1. The user is a guest and has not logged in yet.
+2. Beautifully, kindly, and charmingly explain that to activate document analysis, they should create an account or sign in using the "Get Started" button. Mention that guests can study website properties instead!
+`;
+      }
+    } else {
+      systemInstruction += `RULES OF ENGAGEMENT (Website Mode):
+1. Resolve any search or pricing questions about DocuMind AI based strictly on the WEBSITE KNOWLEDGE BASE.
+2. Suggest the user sign in or use the test login bypass (kmulatu21@gmail.com, password: admin@docmind) to unlock complete administrator capabilities.
+3. Use bolding and structured markdown. Keep it incredibly elegant!
+`;
+    }
+
+    systemInstruction += `\nKeep your response modern, engaging, and compact.`;
+
+    const promptContents: any[] = [];
+    if (history && Array.isArray(history)) {
+      history.slice(-6).forEach((item: any) => {
+        promptContents.push({
+          role: item.sender === 'user' ? 'user' : 'model',
+          parts: [{ text: item.text }],
+        });
+      });
+    }
+
+    promptContents.push({
+      role: 'user',
+      parts: [{ text: message }],
+    });
+
+    const genRes = await ai.models.generateContent({
+      model: 'gemini-3.5-flash',
+      contents: promptContents,
+      config: {
+        systemInstruction,
+        temperature: 0.3,
+      },
+    });
+
+    const reply = genRes.text || 'I could not generate an answer. Please repeat your question.';
+
+    res.json({
+      reply,
+      sources: sources.length > 0 ? sources : undefined,
+    });
+  } catch (error: any) {
+    console.error('Assistant chat controller failure:', error);
+    res.status(500).json({ error: error.message || 'Error processing assistant prompt' });
+  }
+});
+
 // Fetch Stats Analytics
 app.get('/api/stats', authenticateToken, (req: any, res) => {
   try {

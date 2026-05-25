@@ -56,25 +56,25 @@ export default function ContactForm({ onClose }: ContactFormProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 text-left select-text">
+    <form onSubmit={handleSubmit} className="space-y-3.5 sm:space-y-4 text-left select-text">
       {error && (
-        <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-center gap-2 animate-shake">
+        <div className="p-2.5 sm:p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-[11px] sm:text-xs flex items-center gap-2 animate-shake">
           <AlertCircle className="h-4 w-4 shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
       {success ? (
-        <div className="space-y-4 py-2 text-center">
-          <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/15 text-emerald-400 text-xs flex items-start gap-2.5">
-            <CheckCircle2 className="h-4.5 w-4.5 shrink-0 animate-bounce mt-0.5" />
+        <div className="space-y-3.5 sm:space-y-4 py-2 text-center">
+          <div className="p-3 sm:p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/15 text-emerald-400 text-[11px] sm:text-xs flex items-start gap-2.5">
+            <CheckCircle2 className="h-4 w-4 sm:h-4.5 sm:w-4.5 shrink-0 animate-bounce mt-0.5" />
             <p className="leading-relaxed text-left">{success}</p>
           </div>
           {onClose && (
             <button
               type="button"
               onClick={onClose}
-              className="px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-cyan-500 hover:from-indigo-600 hover:to-cyan-600 text-slate-950 font-bold rounded-xl text-xs transition shadow-md w-full select-none cursor-pointer"
+              className="px-4 py-2 sm:px-5 sm:py-2.5 bg-gradient-to-r from-indigo-500 to-cyan-500 hover:from-indigo-600 hover:to-cyan-600 text-slate-950 font-bold rounded-xl text-xs transition shadow-md w-full select-none cursor-pointer"
             >
               Close Inquiry Console
             </button>
@@ -82,52 +82,52 @@ export default function ContactForm({ onClose }: ContactFormProps) {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-[10px] uppercase font-bold tracking-wider text-slate-450 text-slate-400">Your Full Name</label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+            <div className="space-y-1 sm:space-y-1.5">
+              <label className="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider text-slate-400">Your Full Name</label>
               <input
                 type="text"
                 placeholder="CEO mulatu client"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full bg-slate-950/80 border border-slate-850 px-3.5 py-2 rounded-xl text-xs text-slate-200 placeholder-slate-650 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition"
+                className="w-full bg-slate-950/80 border border-slate-850 px-3 py-2 sm:px-3.5 sm:py-2 rounded-xl text-xs sm:text-sm text-slate-200 placeholder-slate-650 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition"
                 required
               />
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-[10px] uppercase font-bold tracking-wider text-slate-450 text-slate-400">Your Secure Email</label>
+            <div className="space-y-1 sm:space-y-1.5">
+              <label className="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider text-slate-400">Your Secure Email</label>
               <input
                 type="email"
                 placeholder="client@domain.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-slate-950/80 border border-slate-850 px-3.5 py-2 rounded-xl text-xs text-slate-200 placeholder-slate-650 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition"
+                className="w-full bg-slate-950/80 border border-slate-850 px-3 py-2 sm:px-3.5 sm:py-2 rounded-xl text-xs sm:text-sm text-slate-200 placeholder-slate-650 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition"
                 required
               />
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-[10px] uppercase font-bold tracking-wider text-slate-450 text-slate-400">Message Subject</label>
+          <div className="space-y-1 sm:space-y-1.5">
+            <label className="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider text-slate-400">Message Subject</label>
             <input
               type="text"
               placeholder="Inquiry about Billing upgrade or tier level"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
-              className="w-full bg-slate-950/80 border border-slate-850 px-3.5 py-2 rounded-xl text-xs text-slate-200 placeholder-slate-650 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition"
+              className="w-full bg-slate-950/80 border border-slate-850 px-3 py-2 sm:px-3.5 sm:py-2 rounded-xl text-xs sm:text-sm text-slate-200 placeholder-slate-650 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition"
               required
             />
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-[10px] uppercase font-bold tracking-wider text-slate-450 text-slate-400">Enter Detailed Message</label>
+          <div className="space-y-1 sm:space-y-1.5">
+            <label className="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider text-slate-400">Enter Detailed Message</label>
             <textarea
               placeholder="Give details about your transaction ID or custom requirements..."
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              rows={4}
-              className="w-full bg-slate-950/80 border border-slate-850 px-3.5 py-2.5 rounded-xl text-xs text-slate-200 placeholder-slate-650 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition leading-relaxed resize-none"
+              rows={3}
+              className="w-full bg-slate-950/80 border border-slate-850 px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl text-xs sm:text-sm text-slate-200 placeholder-slate-650 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition leading-relaxed resize-none"
               required
             />
           </div>
@@ -135,9 +135,9 @@ export default function ContactForm({ onClose }: ContactFormProps) {
           <button
             type="submit"
             disabled={loading}
-            className="w-full px-5 py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 hover:from-indigo-600 hover:to-cyan-600 font-bold text-slate-950 text-xs transition flex items-center justify-center gap-2 shadow-md cursor-pointer select-none"
+            className="w-full px-4 py-2.5 sm:px-5 sm:py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 hover:from-indigo-600 hover:to-cyan-600 font-bold text-slate-950 text-xs sm:text-sm transition flex items-center justify-center gap-2 shadow-md cursor-pointer select-none"
           >
-            <Send className="h-3.5 w-3.5" />
+            <Send className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
             <span>{loading ? 'Transmitting to admin...' : 'Dispatch Message securely'}</span>
           </button>
         </>

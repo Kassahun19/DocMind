@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   BrainCircuit, LayoutDashboard, MessageSquareLock, LogOut, 
   Database, UserCheck, RefreshCw, Layers, Sparkles, CreditCard, ShieldAlert, Users,
-  Mail, Phone, MapPin, Info, Check, X, Coins
+  Mail, Phone, MapPin, Info, Check, X, Coins, Menu
 } from 'lucide-react';
 
 import AuthScreen from './components/AuthScreen';
@@ -13,6 +13,7 @@ import BillingTab from './components/BillingTab';
 import AdminTab from './components/AdminTab';
 import ContactForm from './components/ContactForm';
 import PricingOverviewModal from './components/PricingOverviewModal';
+import FloatingAssistant from './components/FloatingAssistant';
 import { User, PDFDocument, ChatSession, DashboardStats, AuthResponse } from './types';
 
 // Establish a default, eye-pleasing theme state
@@ -25,6 +26,8 @@ export default function App() {
   const [showContact, setShowContact] = useState(false);
   const [showPricingPopup, setShowPricingPopup] = useState(false);
   const [showAuthForm, setShowAuthForm] = useState(false);
+  const [guestMenuOpen, setGuestMenuOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   
   const [activeTab, setActiveTab] = useState<'dashboard' | 'chat' | 'billing' | 'admin'>('dashboard');
   const [loading, setLoading] = useState(false);
@@ -142,43 +145,105 @@ export default function App() {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans relative overflow-x-hidden overflow-y-auto">
         {/* Aesthetic global landing header */}
-        <header className="border-b border-slate-900 bg-slate-950/80 backdrop-blur-md sticky top-0 z-40 px-3 py-2.5 sm:px-6 sm:py-4 flex items-center justify-between select-none">
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            <div className="h-5 w-5 sm:h-6 sm:w-6 rounded-md bg-gradient-to-br from-indigo-505 to-cyan-505 bg-indigo-500 flex items-center justify-center shrink-0">
-              <BrainCircuit className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-slate-950 stroke-[2.5]" />
+        <header className="border-b border-slate-900 bg-slate-950/80 backdrop-blur-md sticky top-0 z-40 px-3 py-2.5 sm:px-6 sm:py-4 select-none">
+          <div className="flex items-center justify-between relative">
+            {/* Logo */}
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              <div className="h-5 w-5 sm:h-6 sm:w-6 rounded-md bg-gradient-to-br from-indigo-505 to-cyan-505 bg-indigo-500 flex items-center justify-center shrink-0">
+                <BrainCircuit className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-slate-950 stroke-[2.5]" />
+              </div>
+              <span className="font-bold text-[11px] sm:text-xs tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-transparent shrink-0">
+                DocuMind AI
+              </span>
             </div>
-            <span className="font-bold text-[11px] sm:text-xs tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-transparent shrink-0">
-              DocuMind AI
-            </span>
+
+            {/* Links centered on desktop (md and larger) */}
+            <div className="hidden md:flex items-center gap-2 lg:gap-4 font-bold absolute left-1/2 -translate-x-1/2">
+              <button 
+                onClick={() => setShowAbout(true)}
+                className="px-2.5 py-1.5 sm:px-3.5 sm:py-2 rounded-lg hover:bg-slate-900 text-slate-400 hover:text-slate-100 transition cursor-pointer select-none font-bold text-sm md:text-base lg:text-[17px] xl:text-[18px] tracking-tight whitespace-nowrap"
+              >
+                About
+              </button>
+              <button 
+                onClick={() => setShowContact(true)}
+                className="px-2.5 py-1.5 sm:px-3.5 sm:py-2 rounded-lg hover:bg-slate-900 text-slate-400 hover:text-slate-100 transition cursor-pointer select-none font-bold text-sm md:text-base lg:text-[17px] xl:text-[18px] tracking-tight whitespace-nowrap"
+              >
+                Contact
+              </button>
+              <button 
+                onClick={() => setShowPricingPopup(true)}
+                className="px-2.5 py-1.5 sm:px-3.5 sm:py-2 rounded-lg hover:bg-slate-900 text-slate-400 hover:text-slate-100 transition cursor-pointer select-none font-bold text-sm md:text-base lg:text-[17px] xl:text-[18px] tracking-tight whitespace-nowrap"
+              >
+                Pricing
+              </button>
+            </div>
+
+            {/* Quick access/sign-in call to action & hamburger menu on the right */}
+            <div className="flex items-center gap-3">
+              <div className="hidden md:block">
+                <button 
+                  onClick={() => setShowAuthForm(true)}
+                  className="inline-flex px-3.5 sm:px-5 py-2 sm:py-2.5 bg-gradient-to-r from-indigo-500 to-cyan-500 hover:from-indigo-600 hover:to-cyan-600 rounded-xl font-extrabold sm:font-black text-slate-950 transition-all hover:scale-[1.03] active:scale-[0.97] cursor-pointer text-xs sm:text-xs md:text-[15px] xl:text-base tracking-wide select-none shrink-0 border border-transparent shadow-md shadow-indigo-550/10"
+                >
+                  Get Started
+                </button>
+              </div>
+
+              {/* Mobile hamburger menu toggle */}
+              <button 
+                onClick={() => setGuestMenuOpen(!guestMenuOpen)}
+                className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-900 focus:outline-none transition cursor-pointer select-none"
+                aria-label="Toggle navigation menu"
+              >
+                {guestMenuOpen ? <X className="h-4.5 w-4.5" /> : <Menu className="h-4.5 w-4.5" />}
+              </button>
+            </div>
           </div>
 
-          {/* Links next to logo / in the hangar */}
-          <div className="flex items-center gap-1.5 sm:gap-3 text-[11px] sm:text-xs font-bold">
-            <button 
-              onClick={() => setShowAbout(true)}
-              className="px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded-lg hover:bg-slate-900 text-slate-400 hover:text-slate-100 transition cursor-pointer select-none font-semibold"
-            >
-              About
-            </button>
-            <button 
-              onClick={() => setShowContact(true)}
-              className="px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded-lg hover:bg-slate-900 text-slate-400 hover:text-slate-100 transition cursor-pointer select-none font-semibold"
-            >
-              Contact
-            </button>
-            <button 
-              onClick={() => setShowPricingPopup(true)}
-              className="px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded-lg hover:bg-slate-900 text-slate-400 hover:text-slate-100 transition cursor-pointer select-none font-semibold"
-            >
-              Pricing
-            </button>
-            <button 
-              onClick={() => setShowAuthForm(true)}
-              className="inline-flex px-2.5 sm:px-3.5 py-1.2 sm:py-1.5 bg-gradient-to-r from-indigo-500 to-cyan-500 hover:from-indigo-600 hover:to-cyan-600 rounded-lg sm:rounded-xl font-bold text-slate-950 transition-all hover:scale-[1.03] active:scale-[0.97] cursor-pointer text-[10.5px] sm:text-[11px] select-none shrink-0"
-            >
-              Get Started
-            </button>
-          </div>
+          {/* Collapsible Mobile Dropdown Navigation Menu */}
+          <AnimatePresence>
+            {guestMenuOpen && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.2 }}
+                className="md:hidden overflow-hidden flex flex-col gap-1 mt-2.5 pt-2.5 border-t border-slate-900 bg-slate-950/40"
+              >
+                <button 
+                  onClick={() => { setShowAbout(true); setGuestMenuOpen(false); }}
+                  className="w-full text-left py-2 px-2.5 rounded-lg hover:bg-slate-900 text-slate-400 hover:text-slate-100 transition font-semibold text-[11px] sm:text-xs flex items-center gap-2.5"
+                >
+                  <Info className="h-3.5 w-3.5 text-indigo-400 shrink-0" />
+                  <span>About</span>
+                </button>
+                <button 
+                  onClick={() => { setShowContact(true); setGuestMenuOpen(false); }}
+                  className="w-full text-left py-2 px-2.5 rounded-lg hover:bg-slate-900 text-slate-400 hover:text-slate-100 transition font-semibold text-[11px] sm:text-xs flex items-center gap-2.5"
+                >
+                  <Mail className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
+                  <span>Contact</span>
+                </button>
+                <button 
+                  onClick={() => { setShowPricingPopup(true); setGuestMenuOpen(false); }}
+                  className="w-full text-left py-2 px-2.5 rounded-lg hover:bg-slate-900 text-slate-400 hover:text-slate-100 transition font-semibold text-[11px] sm:text-xs flex items-center gap-2.5"
+                >
+                  <CreditCard className="h-3.5 w-3.5 text-purple-400 shrink-0" />
+                  <span>Pricing</span>
+                </button>
+                <div className="border-t border-slate-900/60 mt-1.5 pt-2">
+                  <button 
+                    onClick={() => { setShowAuthForm(true); setGuestMenuOpen(false); }}
+                    className="w-full py-2 bg-gradient-to-r from-indigo-500 to-cyan-500 hover:from-indigo-600 hover:to-cyan-600 rounded-lg text-slate-950 font-bold text-[11px] transition-all hover:scale-[1.01] flex items-center justify-center gap-1.5"
+                  >
+                    <Sparkles className="h-3.5 w-3.5 text-slate-950 shrink-0" />
+                    <span>Get Started</span>
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </header>
 
         {/* Global Modals for Guests */}
@@ -251,22 +316,22 @@ export default function App() {
 
         <AnimatePresence>
           {showContact && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/95 backdrop-blur-md" onClick={() => setShowContact(false)}>
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/95 backdrop-blur-md" onClick={() => setShowContact(false)}>
               <motion.div 
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="bg-slate-900 border border-slate-850 rounded-2xl w-full max-w-lg overflow-hidden relative shadow-2xl p-6 md:p-8 space-y-6"
+                className="bg-slate-900 border border-slate-850 rounded-2xl w-full max-w-lg overflow-y-auto max-h-[95vh] sm:max-h-none relative shadow-2xl p-4 sm:p-6 md:p-8 space-y-4 sm:space-y-6"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="flex items-center justify-between border-b border-slate-850 pb-4">
+                <div className="flex items-center justify-between border-b border-slate-850 pb-3 sm:pb-4">
                   <div className="flex items-center gap-2 text-indigo-400">
-                    <Mail className="h-5 w-5" />
-                    <h3 className="text-sm font-bold text-slate-100 tracking-tight">Contact Us (CEO: Kassahun Mulatu)</h3>
+                    <Mail className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
+                    <h3 className="text-xs sm:text-sm font-bold text-slate-100 tracking-tight">Contact Us</h3>
                   </div>
                   <button 
                     onClick={() => setShowContact(false)}
-                    className="p-1.5 rounded-lg hover:bg-slate-850 text-slate-400 hover:text-slate-205 transition cursor-pointer"
+                    className="p-1.5 rounded-lg hover:bg-slate-850 text-slate-400 hover:text-slate-200 transition cursor-pointer"
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -385,6 +450,8 @@ export default function App() {
             &copy; {new Date().getFullYear()} DocuMind AI. All rights reserved. Built by Kassahun Mulatu
           </div>
         </footer>
+
+        <FloatingAssistant token={token} userName={user?.name} />
       </div>
     );
   }
@@ -393,12 +460,13 @@ export default function App() {
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans relative overflow-hidden select-none">
       {/* Visual Ambient Light Spots */}
       <div className="absolute top-[-20%] right-[-10%] w-[60%] h-[60%] rounded-full bg-indigo-500/5 blur-[150px] pointer-events-none" />
-      <div className="absolute bottom-[-20%] left-[-10%] w-[60%] h-[60%] rounded-full bg-cyan-500/5 blur-[150px] pointer-events-none" />
-
-      {/* 1. Global Navigation Bar */}
-      <header className="border-b border-slate-900 bg-slate-950/80 backdrop-blur-md sticky top-0 z-40 select-none px-4 py-3 md:px-6 md:py-4 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-        {/* Row 1 / Left section: Logo & Hangar Links */}
-        <div className="w-full xl:w-auto flex flex-col sm:flex-row items-center justify-between xl:justify-start gap-4 flex-wrap">
+      <div className="absolute bottom-[-20%] left-[-10%] w-[60%] h-[60%] rounded-full bg-cyan-500/5 blur-[150px] pointer-events-none" />      {/* 1. Global Navigation Bar */}
+      <header className="border-b border-slate-900 bg-slate-950/80 backdrop-blur-md sticky top-0 z-40 select-none px-4 py-3 md:px-6 md:py-4 flex flex-col gap-3.5">
+        
+        {/* Row 1: Logo, Centered Hangar Links, and Right Utilities */}
+        <div className="flex items-center justify-between relative w-full">
+          
+          {/* Logo */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <div className="h-5 w-5 sm:h-6 sm:w-6 rounded-md bg-gradient-to-br from-indigo-505 to-cyan-505 bg-indigo-500 flex items-center justify-center shrink-0">
               <BrainCircuit className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-slate-950 stroke-[2.5]" />
@@ -408,135 +476,232 @@ export default function App() {
             </span>
           </div>
 
-          <div className="h-4 w-px bg-slate-800/80 hidden sm:block shrink-0" />
-
-          {/* Hangar Links */}
-          <div className="flex items-center gap-1 sm:gap-2 text-[10.5px] font-extrabold text-slate-400">
+          {/* Hangar Links - Centered on desktop, hidden on mobile */}
+          <div className="hidden lg:flex items-center gap-2 xl:gap-3 font-extrabold text-slate-400 absolute left-1/2 -translate-x-1/2">
             <button
               onClick={() => setShowAbout(true)}
-              className="hover:text-slate-100 px-2 py-1 hover:bg-slate-900/40 rounded-lg transition cursor-pointer select-none"
+              className="hover:text-slate-100 px-3.5 py-2 hover:bg-slate-900/40 rounded-lg transition cursor-pointer select-none font-extrabold text-sm lg:text-base xl:text-[17px] tracking-tight"
             >
               About Us
             </button>
             <button
               onClick={() => setShowContact(true)}
-              className="hover:text-slate-100 px-2 py-1 hover:bg-slate-900/40 rounded-lg transition cursor-pointer select-none"
+              className="hover:text-slate-100 px-3.5 py-2 hover:bg-slate-900/40 rounded-lg transition cursor-pointer select-none font-extrabold text-sm lg:text-base xl:text-[17px] tracking-tight"
             >
               Contact Us
             </button>
             <button
               onClick={() => setActiveTab('billing')}
-              className={`hover:text-slate-100 px-2 py-1 hover:bg-slate-900/40 rounded-lg transition cursor-pointer select-none ${
+              className={`hover:text-slate-100 px-3.5 py-2 hover:bg-slate-900/40 rounded-lg transition cursor-pointer select-none font-extrabold text-sm lg:text-base xl:text-[17px] tracking-tight ${
                 activeTab === 'billing' ? 'text-indigo-400 bg-indigo-550/5' : ''
               }`}
             >
               Pricing
             </button>
           </div>
+
+          {/* Desktop Identity & Session Control - Hidden on mobile */}
+          <div className="hidden lg:flex items-center gap-3 md:gap-4 text-xs font-medium text-slate-400">
+            {user.role !== 'admin' && (
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await fetch('/api/auth/make-admin', {
+                      method: 'POST',
+                      headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (res.ok) {
+                      forceRefresh();
+                      setActiveTab('admin');
+                    }
+                  } catch (e) {
+                    console.error(e);
+                  }
+                }}
+                className="px-2.5 py-1.5 bg-indigo-500/10 hover:bg-indigo-500 hover:text-slate-950 border border-indigo-500/20 text-indigo-400 text-[10px] font-bold uppercase rounded-lg transition-all cursor-pointer whitespace-nowrap shrink-0"
+                title="Promote yourself to administrator instantly to test payment approvals"
+              >
+                Test Admin View
+              </button>
+            )}
+
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-850 bg-slate-900/30 shrink-0">
+              <UserCheck className={`h-3.5 w-3.5 ${user.role === 'admin' ? 'text-amber-400' : 'text-emerald-400'}`} />
+              <span className="truncate max-w-[100px] font-semibold text-slate-300">
+                {user.name} {user.role === 'admin' && '(Admin)'}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={forceRefresh}
+                className="p-2 hover:bg-slate-900 rounded-xl border border-slate-850 hover:text-white transition cursor-pointer text-slate-500"
+                title="Reload indices"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+              </button>
+
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-1.5 py-2 px-3 hover:bg-red-500/10 hover:text-red-400 border border-transparent hover:border-red-500/20 rounded-xl transition cursor-pointer text-slate-400 font-bold"
+              >
+                <LogOut className="h-3.5 w-3.5" /> Logout
+              </button>
+            </div>
+          </div>
+
+          {/* Mobile Hamburger menu toggle */}
+          <button 
+            onClick={() => setUserMenuOpen(!userMenuOpen)}
+            className="lg:hidden p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-900 focus:outline-none transition cursor-pointer select-none"
+            aria-label="Toggle user navigation menu"
+          >
+            {userMenuOpen ? <X className="h-4.5 w-4.5" /> : <Menu className="h-4.5 w-4.5" />}
+          </button>
         </div>
 
-        {/* Tab route control widgets - Centered on mobile and desktop */}
-        <div className="w-full xl:w-auto flex flex-wrap justify-center items-center gap-1.5 p-1 bg-slate-900/50 rounded-xl border border-slate-800/65 max-w-full overflow-x-auto">
-          <button
-            onClick={() => setActiveTab('dashboard')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold tracking-wide transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
-              activeTab === 'dashboard'
-                ? 'bg-gradient-to-r from-indigo-505 to-cyan-505 bg-indigo-500 text-slate-900'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
-            }`}
-          >
-            <LayoutDashboard className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Document Vault</span><span className="sm:hidden">Vault</span>
-          </button>
-          
-          <button
-            onClick={() => setActiveTab('chat')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold tracking-wide transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
-              activeTab === 'chat'
-                ? 'bg-gradient-to-r from-indigo-505 to-cyan-505 bg-indigo-500 text-slate-900'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
-            }`}
-          >
-            <MessageSquareLock className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Q&amp;A Agent</span><span className="sm:hidden">Q&amp;A</span>
-          </button>
+        {/* Collapsible Mobile Dropdown Navigation Menu for Logged-In Users */}
+        <AnimatePresence>
+          {userMenuOpen && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.2 }}
+              className="lg:hidden overflow-hidden flex flex-col gap-1.5 pb-2.5 border-t border-slate-900 bg-slate-950/40 px-1"
+            >
+              <button 
+                onClick={() => { setShowAbout(true); setUserMenuOpen(false); }}
+                className="w-full text-left py-2 px-2.5 rounded-lg hover:bg-slate-900 text-slate-400 hover:text-slate-100 transition font-semibold text-[11px] sm:text-xs flex items-center gap-2.5"
+              >
+                <Info className="h-3.5 w-3.5 text-indigo-400 shrink-0" />
+                <span>About Us</span>
+              </button>
+              <button 
+                onClick={() => { setShowContact(true); setUserMenuOpen(false); }}
+                className="w-full text-left py-2 px-2.5 rounded-lg hover:bg-slate-900 text-slate-400 hover:text-slate-100 transition font-semibold text-[11px] sm:text-xs flex items-center gap-2.5"
+              >
+                <Mail className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
+                <span>Contact Us</span>
+              </button>
+              <button 
+                onClick={() => { setActiveTab('billing'); setUserMenuOpen(false); }}
+                className="w-full text-left py-2 px-2.5 rounded-lg hover:bg-slate-900 text-slate-400 hover:text-slate-100 transition font-semibold text-[11px] sm:text-xs flex items-center gap-2.5"
+              >
+                <CreditCard className="h-3.5 w-3.5 text-purple-400 shrink-0" />
+                <span>Pricing Plans</span>
+              </button>
 
-          <button
-            onClick={() => setActiveTab('billing')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold tracking-wide transition flex items-center gap-1.5 cursor-pointer relative shrink-0 ${
-              activeTab === 'billing'
-                ? 'bg-gradient-to-r from-indigo-505 to-cyan-505 bg-indigo-500 text-slate-900'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
-            }`}
-          >
-            <CreditCard className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Pricing</span><span className="sm:hidden">Price</span>
-            {user.tier === 'free' && (user.promptCount || 0) >= 5 && (
-              <span className="absolute -top-1.5 -right-1 flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
-              </span>
-            )}
-          </button>
+              <div className="border-t border-slate-900 my-1 pt-2 space-y-2">
+                {/* Mobile Admin Test Toggle */}
+                {user.role !== 'admin' && (
+                  <button
+                    onClick={async () => {
+                      setUserMenuOpen(false);
+                      try {
+                        const res = await fetch('/api/auth/make-admin', {
+                          method: 'POST',
+                          headers: { 'Authorization': `Bearer ${token}` }
+                        });
+                        if (res.ok) {
+                          forceRefresh();
+                          setActiveTab('admin');
+                        }
+                      } catch (e) {
+                        console.error(e);
+                      }
+                    }}
+                    className="w-full py-2 bg-indigo-500/10 hover:bg-indigo-500 text-indigo-400 hover:text-slate-950 rounded-lg text-[10px] font-bold uppercase transition flex items-center justify-center gap-2"
+                  >
+                    <span>Test Admin View</span>
+                  </button>
+                )}
 
-          {user.role === 'admin' && (
+                {/* Identity banner */}
+                <div className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-slate-850 bg-slate-900/30 text-xs">
+                  <UserCheck className={`h-3.5 w-3.5 ${user.role === 'admin' ? 'text-amber-400' : 'text-emerald-400'}`} />
+                  <span className="truncate max-w-[150px] font-semibold text-slate-300">
+                    {user.name} {user.role === 'admin' && '(Admin)'}
+                  </span>
+                </div>
+
+                {/* Reset & Logout Buttons */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { forceRefresh(); setUserMenuOpen(false); }}
+                    className="flex-1 py-2 bg-slate-900 hover:bg-slate-850 rounded-xl border border-slate-800 text-slate-400 hover:text-white transition flex items-center justify-center gap-1.5 text-xs font-semibold"
+                  >
+                    <RefreshCw className="h-3 w-3 shrink-0" />
+                    <span>Reload Indices</span>
+                  </button>
+
+                  <button
+                    onClick={handleLogout}
+                    className="flex-1 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 hover:text-red-400 rounded-xl transition flex items-center justify-center gap-1.5 text-xs font-bold border border-red-500/20"
+                  >
+                    <LogOut className="h-3.5 w-3.5 shrink-0" />
+                    <span>Logout</span>
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Row 2: Tab route control widgets - Centered on mobile and desktop */}
+        <div className="w-full flex justify-center py-0.5">
+          <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-900/50 rounded-xl border border-slate-800/65 max-w-full overflow-x-auto">
             <button
-              onClick={() => setActiveTab('admin')}
+              onClick={() => setActiveTab('dashboard')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold tracking-wide transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                activeTab === 'admin'
+                activeTab === 'dashboard'
                   ? 'bg-gradient-to-r from-indigo-505 to-cyan-505 bg-indigo-500 text-slate-900'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
               }`}
             >
-              <Users className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Admin Console</span><span className="sm:hidden">Admin</span>
+              <LayoutDashboard className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Document Vault</span><span className="sm:hidden">Vault</span>
             </button>
-          )}
-        </div>
-
-        {/* Identity & Session Control */}
-        <div className="w-full xl:w-auto flex items-center justify-center xl:justify-end gap-3 md:gap-4 text-xs font-medium text-slate-400 flex-wrap">
-          {user.role !== 'admin' && (
+            
             <button
-              onClick={async () => {
-                try {
-                  const res = await fetch('/api/auth/make-admin', {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}` }
-                  });
-                  if (res.ok) {
-                    forceRefresh();
-                    setActiveTab('admin');
-                  }
-                } catch (e) {
-                  console.error(e);
-                }
-              }}
-              className="px-2.5 py-1.5 bg-indigo-500/10 hover:bg-indigo-500 hover:text-slate-950 border border-indigo-500/20 text-indigo-400 text-[10px] font-bold uppercase rounded-lg transition-all cursor-pointer whitespace-nowrap shrink-0"
-              title="Promote yourself to administrator instantly to test payment approvals"
+              onClick={() => setActiveTab('chat')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold tracking-wide transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                activeTab === 'chat'
+                  ? 'bg-gradient-to-r from-indigo-505 to-cyan-505 bg-indigo-500 text-slate-900'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
+              }`}
             >
-              Test Admin View
-            </button>
-          )}
-
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-850 bg-slate-900/30 shrink-0">
-            <UserCheck className={`h-3.5 w-3.5 ${user.role === 'admin' ? 'text-amber-400' : 'text-emerald-400'}`} />
-            <span className="truncate max-w-[100px] font-semibold text-slate-300">
-              {user.name} {user.role === 'admin' && '(Admin)'}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={forceRefresh}
-              className="p-2 hover:bg-slate-900 rounded-xl border border-slate-850 hover:text-white transition cursor-pointer text-slate-500"
-              title="Reload indices"
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
+              <MessageSquareLock className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Q&amp;A Agent</span><span className="sm:hidden">Q&amp;A</span>
             </button>
 
             <button
-              onClick={handleLogout}
-              className="flex items-center gap-1.5 py-2 px-3 hover:bg-red-500/10 hover:text-red-400 border border-transparent hover:border-red-500/20 rounded-xl transition cursor-pointer text-slate-400 font-bold"
+              onClick={() => setActiveTab('billing')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold tracking-wide transition flex items-center gap-1.5 cursor-pointer relative shrink-0 ${
+                activeTab === 'billing'
+                  ? 'bg-gradient-to-r from-indigo-505 to-cyan-505 bg-indigo-500 text-slate-900'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
+              }`}
             >
-              <LogOut className="h-3.5 w-3.5" /> Logout
+              <CreditCard className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Pricing</span><span className="sm:hidden">Price</span>
+              {user.tier === 'free' && (user.promptCount || 0) >= 5 && (
+                <span className="absolute -top-1.5 -right-1 flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                </span>
+              )}
             </button>
+
+            {user.role === 'admin' && (
+              <button
+                onClick={() => setActiveTab('admin')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold tracking-wide transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                  activeTab === 'admin'
+                    ? 'bg-gradient-to-r from-indigo-505 to-cyan-505 bg-indigo-500 text-slate-900'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
+                }`}
+              >
+                <Users className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Admin Console</span><span className="sm:hidden">Admin</span>
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -784,18 +949,18 @@ export default function App() {
 
       <AnimatePresence>
         {showContact && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/95 backdrop-blur-md" onClick={() => setShowContact(false)}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/95 backdrop-blur-md" onClick={() => setShowContact(false)}>
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-slate-900 border border-slate-850 rounded-2xl w-full max-w-lg overflow-hidden relative shadow-2xl p-6 md:p-8 space-y-6"
+              className="bg-slate-900 border border-slate-850 rounded-2xl w-full max-w-lg overflow-y-auto max-h-[95vh] sm:max-h-none relative shadow-2xl p-4 sm:p-6 md:p-8 space-y-4 sm:space-y-6"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between border-b border-slate-850 pb-4">
+              <div className="flex items-center justify-between border-b border-slate-850 pb-3 sm:pb-4">
                 <div className="flex items-center gap-2 text-indigo-400">
-                  <Mail className="h-5 w-5" />
-                  <h3 className="text-sm font-bold text-slate-100 tracking-tight font-bold">Contact Us (CEO: Kassahun Mulatu)</h3>
+                  <Mail className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
+                  <h3 className="text-xs sm:text-sm font-bold text-slate-100 tracking-tight">Contact Us</h3>
                 </div>
                 <button 
                   onClick={() => setShowContact(false)}
@@ -810,6 +975,8 @@ export default function App() {
           </div>
         )}
       </AnimatePresence>
+
+      <FloatingAssistant token={token} userName={user?.name} />
     </div>
   );
 }
